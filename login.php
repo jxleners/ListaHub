@@ -9,7 +9,7 @@
 // ============================================================
 
 error_reporting(E_ALL);
-ini_set('display_errors', 0);
+ini_set('display_errors', 1);
 
 session_start();
 
@@ -39,14 +39,17 @@ try {
     // Requirement: Prepared Statement – no variable interpolation
     // Joins users → stores so we get store_name in one query (JOIN)
     $stmt = $pdo->prepare(
-        "SELECT u.id, u.username, u.email, u.password,
-                s.id AS store_id, s.store_name
-         FROM   users  u
-         LEFT JOIN stores s ON s.user_id = u.id
-         WHERE  u.username = :login OR u.email = :login
-         LIMIT  1"
-    );
-    $stmt->execute([':login' => $login]);
+    "SELECT u.id, u.username, u.email, u.password,
+            s.id AS store_id, s.store_name
+     FROM   users  u
+     LEFT JOIN stores s ON s.user_id = u.id
+     WHERE  u.username = :username OR u.email = :email
+     LIMIT  1"
+);
+$stmt->execute([
+    ':username' => $login,
+    ':email'    => $login,
+]);
     $user = $stmt->fetch();
 
     // Requirement: password_verify()

@@ -112,12 +112,15 @@ try {
         ':store_name' => $store_name,
     ]);
 
+    $newStoreId = (int) $pdo->lastInsertId();
+
     $pdo->commit(); // ✅ Both inserts succeeded
 
     // ── 3d. Set session & redirect ─────────────────────────────
     $_SESSION['user_id']    = $newUserId;
     $_SESSION['username']   = $username;
     $_SESSION['email']      = $email;
+    $_SESSION['store_id']   = $newStoreId;
     $_SESSION['store_name'] = $store_name;
 
     header("Location: dashboard.php");
