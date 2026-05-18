@@ -4,6 +4,7 @@
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>Restock – StoreMS</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
   <link href="https://fonts.googleapis.com/css2?family=Sora:wght@400;600;700;800&display=swap" rel="stylesheet"/>
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -137,13 +138,13 @@
     <div class="restock-section">
       <div class="restock-toolbar">
         <div class="search-box">
-          <span>🔍</span>
+          <span><i class="bi bi-box-seam"></i></span>
           <input type="text" placeholder="Search…"/>
         </div>
         <div class="filter-tabs">
           <button class="tab active">All Products</button>
-          <button class="tab">Low Stock</button>
-          <button class="tab">Out of Stock</button>
+          <button class="tab"><i class="bi bi-exclamation-triangle"></i> Low Stock</button>
+          <button class="tab"><i class="bi bi-exclamation-triangle-fill"></i> Out of Stock</button>
         </div>
       </div>
       <div class="restock-content">
