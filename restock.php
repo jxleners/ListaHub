@@ -2,9 +2,9 @@
 // ============================================================
 //  restock.php
 //  Requirements: Prepared statements, try-catch, session guard
-//  NOTE: New schema — Restock_Transaction + Restock_Item tables,
-//        Product.quantity (not stock_quantity), user_id filter
-//        Trigger trg_restock_item_add_stock auto-updates stock.
+//  Schema: Restock_Transaction + Restock_Item tables,
+//          Product.quantity, user_id filter
+//          Trigger trg_restock_item_add_stock auto-updates stock.
 // ============================================================
 session_start();
 if (!isset($_SESSION['user_id'])) {
@@ -18,10 +18,10 @@ $user_id = (int) $_SESSION['user_id'];
 $message = '';
 $error   = '';
 
-// ── Handle restock POST ──────────────────────────────────────
-if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    $product_id  = (int)   ($_POST['product_id']  ?? 0);
-    $qty_added   = (int)   ($_POST['qty_added']   ?? 0);
+// ── Handle Restock POST ──────────────────────────────────────
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] === 'restock') {
+    $product_id   = (int)   ($_POST['product_id']  ?? 0);
+    $qty_added    = (int)   ($_POST['qty_added']   ?? 0);
     $cost_at_rest = (float) ($_POST['cost_price']  ?? 0);
 
     if ($product_id > 0 && $qty_added > 0) {
@@ -76,17 +76,50 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 $tab    = $_GET['tab']    ?? 'all';
 $search = trim($_GET['search'] ?? '');
 
+// Pagination
+$per_page    = 10;
+$current_page = max(1, (int)($_GET['page'] ?? 1));
+$offset       = ($current_page - 1) * $per_page;
+
 try {
     $pdo = getPDO();
 
+    // Count query for pagination
+    $countSql = "SELECT COUNT(DISTINCT p.product_id) AS total_rows
+                 FROM Product p
+                 WHERE p.user_id = :user_id";
+    $countParams = [':user_id' => $user_id];
+
+    if ($tab === 'low') {
+        $countSql .= " AND p.status = 'Low Stock'";
+    } elseif ($tab === 'out') {
+        $countSql .= " AND p.status = 'Out of Stock'";
+    } elseif ($tab === 'expired') {
+        $countSql .= " AND p.expiration_date < CURDATE()";
+    } elseif ($tab === 'near') {
+        $countSql .= " AND p.expiration_date BETWEEN CURDATE() AND DATE_ADD(CURDATE(), INTERVAL 30 DAY)";
+    }
+
+    if (!empty($search)) {
+        $countSql .= " AND (p.product_name LIKE :search OR p.sku LIKE :search2)";
+        $countParams[':search']  = '%' . $search . '%';
+        $countParams[':search2'] = '%' . $search . '%';
+    }
+
+    $countStmt2 = $pdo->prepare($countSql);
+    $countStmt2->execute($countParams);
+    $total_rows  = (int)$countStmt2->fetchColumn();
+    $total_pages = max(1, (int)ceil($total_rows / $per_page));
+    $current_page = min($current_page, $total_pages);
+    $offset = ($current_page - 1) * $per_page;
+
+    // Main product query
     $sql = "SELECT p.product_id, p.product_name, p.sku, p.quantity,
                    p.cost_price, p.retail_price, p.expiration_date,
                    p.status, p.low_stock_threshold,
-                   COALESCE(c.category_name, 'Uncategorized') AS category_name,
-                   COALESCE(SUM(ri.quantity_added), 0) AS total_restocked
+                   COALESCE(c.category_name, 'Uncategorized') AS category_name
             FROM Product p
             LEFT JOIN Category c ON c.category_id = p.category_id
-            LEFT JOIN Restock_Item ri ON ri.product_id = p.product_id
             WHERE p.user_id = :user_id";
 
     $params = [':user_id' => $user_id];
@@ -95,6 +128,10 @@ try {
         $sql .= " AND p.status = 'Low Stock'";
     } elseif ($tab === 'out') {
         $sql .= " AND p.status = 'Out of Stock'";
+    } elseif ($tab === 'expired') {
+        $sql .= " AND p.expiration_date < CURDATE()";
+    } elseif ($tab === 'near') {
+        $sql .= " AND p.expiration_date BETWEEN CURDATE() AND DATE_ADD(CURDATE(), INTERVAL 30 DAY)";
     }
 
     if (!empty($search)) {
@@ -103,18 +140,26 @@ try {
         $params[':search2'] = '%' . $search . '%';
     }
 
-    $sql .= " GROUP BY p.product_id ORDER BY p.product_name ASC";
+    $sql .= " ORDER BY p.product_name ASC LIMIT :limit OFFSET :offset";
 
     $stmt = $pdo->prepare($sql);
-    $stmt->execute($params);
+    foreach ($params as $k => $v) {
+        $stmt->bindValue($k, $v);
+    }
+    $stmt->bindValue(':limit',  $per_page, PDO::PARAM_INT);
+    $stmt->bindValue(':offset', $offset,   PDO::PARAM_INT);
+    $stmt->execute();
     $products = $stmt->fetchAll();
 
-    // Counts for tab badges using COUNT() in DB
+    // Counts for tab badges
     $countStmt = $pdo->prepare(
         "SELECT
-            COUNT(*) AS total,
-            SUM(CASE WHEN status = 'Low Stock'    THEN 1 ELSE 0 END) AS low,
-            SUM(CASE WHEN status = 'Out of Stock' THEN 1 ELSE 0 END) AS out_of_stock
+            COUNT(*)                                                                    AS total,
+            SUM(CASE WHEN status = 'Low Stock'    THEN 1 ELSE 0 END)                  AS low,
+            SUM(CASE WHEN status = 'Out of Stock' THEN 1 ELSE 0 END)                  AS out_of_stock,
+            SUM(CASE WHEN expiration_date < CURDATE()                   THEN 1 ELSE 0 END) AS expired,
+            SUM(CASE WHEN expiration_date BETWEEN CURDATE()
+                     AND DATE_ADD(CURDATE(), INTERVAL 30 DAY)           THEN 1 ELSE 0 END) AS near_expiry
          FROM Product WHERE user_id = :user_id"
     );
     $countStmt->execute([':user_id' => $user_id]);
@@ -122,9 +167,23 @@ try {
 
 } catch (PDOException $e) {
     error_log("Restock fetch error: " . $e->getMessage());
-    $products = [];
-    $counts   = ['total' => 0, 'low' => 0, 'out_of_stock' => 0];
+    $products     = [];
+    $counts       = ['total' => 0, 'low' => 0, 'out_of_stock' => 0, 'expired' => 0, 'near_expiry' => 0];
+    $total_pages  = 1;
+    $current_page = 1;
 }
+
+// Helper: build query string preserving current params
+function pageUrl(int $page, string $tab, string $search): string {
+    $q = http_build_query(array_filter([
+        'tab'    => $tab,
+        'search' => $search,
+        'page'   => $page,
+    ]));
+    return 'restock.php?' . $q;
+}
+
+$activePage = 'restock';
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -132,152 +191,447 @@ try {
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>Restock – ListaHub</title>
-  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
-  <link href="https://fonts.googleapis.com/css2?family=Sora:wght@400;600;700;800&display=swap" rel="stylesheet"/>
-  <style>
-    *, *::before, *::after { box-sizing:border-box; margin:0; padding:0; }
-    :root { --sidebar-bg:#4a4a4a; --sidebar-width:240px; --main-bg:#f4f5f7; --nav-item:#6b6b6b; --nav-text:#ddd; --nav-active:#e8e8e8; }
-    body { font-family:'Sora',sans-serif; display:flex; min-height:100vh; background:var(--main-bg); }
-    aside { width:var(--sidebar-width); background:var(--sidebar-bg); display:flex; flex-direction:column; padding:20px 16px; gap:8px; position:fixed; top:0; left:0; bottom:0; border-radius:0 16px 16px 0; z-index:10; }
-    .sidebar-logo { background:#6b6b6b; color:#eee; text-align:center; font-weight:700; font-size:15px; padding:12px; border-radius:12px; margin-bottom:10px; }
-    .sidebar-section-label { color:#aaa; font-size:11px; font-weight:600; text-transform:uppercase; letter-spacing:.8px; padding:8px 8px 2px; }
-    .sidebar-item { background:var(--nav-item); color:var(--nav-text); border-radius:12px; padding:11px 16px; font-size:14px; font-weight:600; cursor:pointer; border:none; text-align:left; width:100%; transition:background .2s; text-decoration:none; display:block; }
-    .sidebar-item:hover { background:#7a7a7a; }
-    .sidebar-item.active { background:var(--nav-active); color:#111; }
-    .sidebar-logout { margin-top:auto; background:#616161; color:#ddd; border-radius:12px; padding:11px 16px; font-size:14px; font-weight:600; cursor:pointer; border:none; width:100%; transition:background .2s; }
-    .sidebar-logout:hover { background:#7a7a7a; }
-    .main-content { margin-left:var(--sidebar-width); flex:1; padding:36px 40px; display:flex; flex-direction:column; gap:24px; }
-    .topbar { display:flex; justify-content:flex-end; }
-    .user-card { background:#e8e8e8; border-radius:12px; padding:10px 16px; display:flex; align-items:center; gap:12px; }
-    .user-info { text-align:right; }
-    .user-name { font-weight:700; font-size:14px; color:#222; }
-    .user-store { font-size:12px; color:#666; }
-    .user-avatar { width:40px; height:40px; background:#888; border-radius:50%; }
-    .page-title { font-size:26px; font-weight:800; color:#111; }
-    .alert { padding:12px 16px; border-radius:10px; font-size:13px; font-weight:600; }
-    .alert-success { background:#d1fae5; color:#065f46; }
-    .alert-error   { background:#fee2e2; color:#991b1b; }
-    .restock-section { background:#d8dadd; border-radius:16px; padding:18px 20px; display:flex; flex-direction:column; gap:14px; }
-    .restock-toolbar { display:flex; align-items:center; gap:12px; flex-wrap:wrap; }
-    .search-box { display:flex; align-items:center; background:#fff; border-radius:50px; padding:8px 16px; gap:8px; flex:1; max-width:300px; }
-    .search-box input { border:none; outline:none; font-family:'Sora',sans-serif; font-size:13px; width:100%; }
-    .filter-tabs { display:flex; gap:8px; }
-    .tab { background:#ccc; border:none; border-radius:50px; padding:8px 20px; font-family:'Sora',sans-serif; font-size:13px; font-weight:600; cursor:pointer; color:#333; text-decoration:none; transition:background .2s; }
-    .tab.active { background:#6b6b6b; color:#eee; }
-    .tab:hover:not(.active) { background:#bbb; }
-    .search-btn { background:#6b6b6b; color:#fff; border:none; border-radius:50px; padding:8px 18px; font-family:'Sora',sans-serif; font-size:13px; font-weight:600; cursor:pointer; }
-    table { width:100%; border-collapse:collapse; background:#e8eaed; border-radius:10px; overflow:hidden; }
-    thead th { padding:12px 14px; text-align:left; font-size:13px; font-weight:700; color:#222; background:#e0e2e6; }
-    tbody tr { border-top:1px solid #d0d2d6; }
-    tbody tr:hover { background:#dfe1e5; }
-    tbody td { padding:12px 14px; font-size:13px; color:#333; }
-    .restock-qty { width:70px; background:#c8c8c8; border:none; border-radius:8px; padding:7px 10px; font-family:'Sora',sans-serif; font-size:13px; text-align:center; }
-    .btn-restock { background:#4a4a4a; color:#fff; border:none; border-radius:8px; padding:7px 14px; font-family:'Sora',sans-serif; font-size:12px; font-weight:600; cursor:pointer; white-space:nowrap; }
-    .btn-restock:hover { background:#333; }
-    .status-low  { color:#b45309; font-weight:600; }
-    .status-out  { color:#b91c1c; font-weight:600; }
-    .status-in   { color:#15803d; font-weight:600; }
-    .empty-state { text-align:center; color:#aaa; padding:40px 0; font-size:14px; }
-  </style>
+
+  <!-- Google Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com"/>
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet"/>
+
+  <!-- Bootstrap Icons -->
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css"/>
+
+  <!-- Global CSS (variables, reset) -->
+  <link rel="stylesheet" href="global_sidebar.css"/>
+  <link rel="stylesheet" href="global_restock.css"/>
+
+  <!-- Component CSS -->
+  <link rel="stylesheet" href="sidebar.css"/>
+  <link rel="stylesheet" href="restock.css"/>
 </head>
 <body>
-<aside>
-  <div class="sidebar-logo">Logo</div>
-  <a class="sidebar-item" href="dashboard.php">Dashboard</a>
-  <div class="sidebar-section-label">Inventory</div>
-  <a class="sidebar-item" href="manage-products.php">Manage Products</a>
-  <a class="sidebar-item active" href="restock.php">Restock</a>
-  <div class="sidebar-section-label">Sales</div>
-  <a class="sidebar-item" href="sales.php">Sales Analytics</a>
-  <div class="sidebar-section-label">Customer Credit</div>
-  <a class="sidebar-item" href="customers.php">Customers</a>
-  <form method="post" action="logout.php" style="margin-top:auto;">
-    <button class="sidebar-logout" type="submit">Log out</button>
-  </form>
-</aside>
 
-<div class="main-content">
-  <div class="topbar">
-    <div class="user-card">
-      <div class="user-info">
-        <div class="user-name"><?= htmlspecialchars($_SESSION['username']) ?></div>
-        <div class="user-store"><?= htmlspecialchars($_SESSION['store_name'] ?? '') ?></div>
-      </div>
-      <div class="user-avatar"></div>
-    </div>
-  </div>
+<div class="page-wrapper">
 
-  <div class="page-title">Restock</div>
+  <!-- ============================================================
+       SIDEBAR (active page: restock)
+       ============================================================ -->
+  <?php
+    $activePage = 'restock';
+    include 'sidebar.php';
+  ?>
 
-  <?php if ($message): ?>
-    <div class="alert alert-success"><?= htmlspecialchars($message) ?></div>
-  <?php endif; ?>
-  <?php if ($error): ?>
-    <div class="alert alert-error"><?= htmlspecialchars($error) ?></div>
-  <?php endif; ?>
+  <!-- ============================================================
+       MAIN BODY
+       ============================================================ -->
+  <div class="main-body">
 
-  <div class="restock-section">
-    <div class="restock-toolbar">
-      <form method="get" style="display:flex;align-items:center;gap:8px;flex:1;max-width:320px;">
-        <input type="hidden" name="tab" value="<?= htmlspecialchars($tab) ?>"/>
-        <div class="search-box">
-          <span><i class="bi bi-box-seam"></i></span>
-          <input type="text" name="search" placeholder="Search…" value="<?= htmlspecialchars($search) ?>"/>
+    <!-- ── Overview Section: Title + Alerts + Stat Cards (all inside the rounded container) ── -->
+    <div class="overview-section">
+
+      <!-- Page Title -->
+      <h1 class="page-title">RESTOCK</h1>
+
+      <!-- Alerts -->
+      <?php if ($message): ?>
+        <div class="alert alert-success"><?= htmlspecialchars($message) ?></div>
+      <?php endif; ?>
+      <?php if ($error): ?>
+        <div class="alert alert-error"><?= htmlspecialchars($error) ?></div>
+      <?php endif; ?>
+
+      <div class="overview-cards">
+
+        <!-- Out of Stocks -->
+        <div class="stat-card red-bg">
+          <div class="stat-icon icon-red">
+            <!--
+              TODO: Replace with your out-of-stock icon image.
+              e.g. <img src="pics_icons/out-of-stock.png" width="33" alt="Out of Stock"/>
+            -->
+            <i class="bi bi-box-seam" style="font-size:28px;"></i>
+          </div>
+          <div class="stat-info">
+            <span class="stat-label">Out of Stocks</span>
+            <span class="stat-value red"><?= (int)($counts['out_of_stock'] ?? 0) ?> Products</span>
+          </div>
         </div>
-        <button type="submit" class="search-btn">Go</button>
-      </form>
-      <div class="filter-tabs">
-        <a class="tab <?= $tab==='all'?'active':'' ?>" href="restock.php?tab=all<?= !empty($search)?'&search='.urlencode($search):'' ?>">
-          All Products (<?= (int)$counts['total'] ?>)
-        </a>
-        <a class="tab <?= $tab==='low'?'active':'' ?>" href="restock.php?tab=low<?= !empty($search)?'&search='.urlencode($search):'' ?>">
-          <i class="bi bi-exclamation-triangle"></i> Low Stock (<?= (int)$counts['low'] ?>)
-        </a>
-        <a class="tab <?= $tab==='out'?'active':'' ?>" href="restock.php?tab=out<?= !empty($search)?'&search='.urlencode($search):'' ?>">
-          <i class="bi bi-exclamation-triangle-fill"></i> Out of Stock (<?= (int)$counts['out_of_stock'] ?>)
-        </a>
-      </div>
-    </div>
 
-    <table>
-      <thead>
-        <tr>
-          <th>Product Name</th><th>SKU</th><th>Category</th>
-          <th>Current Stock</th><th>Status</th><th>Add Qty</th><th>Total Restocked</th>
-        </tr>
-      </thead>
-      <tbody>
-        <?php if (empty($products)): ?>
-          <tr><td colspan="7" class="empty-state">No products found.</td></tr>
+        <!-- Expired Products -->
+        <div class="stat-card orange-bg">
+          <div class="stat-icon icon-orange">
+            <!--
+              TODO: Replace with your expired icon image.
+              e.g. <img src="pics_icons/expired.png" width="33" alt="Expired"/>
+            -->
+            <i class="bi bi-exclamation-circle" style="font-size:28px;"></i>
+          </div>
+          <div class="stat-info">
+            <span class="stat-label">Expired Products</span>
+            <span class="stat-value orange"><?= (int)($counts['expired'] ?? 0) ?> Products</span>
+          </div>
+        </div>
+
+        <!-- Low on Stock -->
+        <div class="stat-card cream-bg">
+          <div class="stat-icon icon-gray">
+            <!--
+              TODO: Replace with your low-stock icon image.
+              e.g. <img src="pics_icons/arrow-trend-down.png" width="33" alt="Low Stock"/>
+            -->
+            <i class="bi bi-graph-down-arrow" style="font-size:28px;"></i>
+          </div>
+          <div class="stat-info">
+            <span class="stat-label">Low on Stock</span>
+            <span class="stat-value gray"><?= (int)($counts['low'] ?? 0) ?> Product<?= (int)($counts['low'] ?? 0) !== 1 ? 's' : '' ?></span>
+          </div>
+        </div>
+
+        <!-- Near Expiry -->
+        <div class="stat-card lavender-bg">
+          <div class="stat-icon icon-blue">
+            <!--
+              TODO: Replace with your near-expiry icon image.
+              e.g. <img src="pics_icons/near-expiry.png" width="33" alt="Near Expiry"/>
+            -->
+            <i class="bi bi-exclamation-square" style="font-size:28px;"></i>
+          </div>
+          <div class="stat-info">
+            <span class="stat-label">Near Expiry</span>
+            <span class="stat-value blue"><?= (int)($counts['near_expiry'] ?? 0) ?> product<?= (int)($counts['near_expiry'] ?? 0) !== 1 ? 's' : '' ?></span>
+          </div>
+        </div>
+
+      </div>
+    </div><!-- /overview-section -->
+
+    <!-- ── Table Section ── -->
+    <div class="table-section">
+
+      <!-- Toolbar -->
+      <div class="table-toolbar">
+        <div class="toolbar-left">
+
+          <!-- Search Form -->
+          <form method="get" style="display:contents;">
+            <input type="hidden" name="tab"  value="<?= htmlspecialchars($tab) ?>"/>
+            <input type="hidden" name="page" value="1"/>
+            <div class="searchbar">
+              <!--
+                TODO: Replace with your magnifying glass icon image.
+                e.g. <img src="pics_icons/magnifying-glass.svg" alt="Search" width="20" height="20"/>
+              -->
+              <i class="bi bi-search"></i>
+              <input
+                type="text"
+                name="search"
+                placeholder="Search for product / sku"
+                value="<?= htmlspecialchars($search) ?>"
+              />
+            </div>
+            <!-- Hidden submit triggered by Enter key -->
+          </form>
+
+          <!-- Filter Tab Buttons -->
+          <div class="filter-tabs">
+            <a
+              href="restock.php?tab=all<?= !empty($search) ? '&search='.urlencode($search) : '' ?>&page=1"
+              class="tab-btn <?= $tab === 'all' ? 'active' : '' ?>"
+            >All products</a>
+
+            <a
+              href="restock.php?tab=out<?= !empty($search) ? '&search='.urlencode($search) : '' ?>&page=1"
+              class="tab-btn <?= $tab === 'out' ? 'active' : '' ?>"
+            >Out of Stock</a>
+
+            <a
+              href="restock.php?tab=low<?= !empty($search) ? '&search='.urlencode($search) : '' ?>&page=1"
+              class="tab-btn <?= $tab === 'low' ? 'active' : '' ?>"
+            >Low Stock</a>
+
+            <a
+              href="restock.php?tab=expired<?= !empty($search) ? '&search='.urlencode($search) : '' ?>&page=1"
+              class="tab-btn <?= $tab === 'expired' ? 'active' : '' ?>"
+            >Expired</a>
+
+            <a
+              href="restock.php?tab=near<?= !empty($search) ? '&search='.urlencode($search) : '' ?>&page=1"
+              class="tab-btn <?= $tab === 'near' ? 'active' : '' ?>"
+            >Near Expiry</a>
+
+            <!-- Import CSV -->
+            <button type="button" class="btn-import" onclick="document.getElementById('csv-upload').click()">
+              <!--
+                TODO: Replace with your import/upload icon image.
+                e.g. <img src="pics_icons/uil-import.svg" alt="Import" width="20" height="20"/>
+              -->
+              <i class="bi bi-upload"></i>
+              Import CSV
+            </button>
+            <!-- Hidden file input for CSV import -->
+            <input type="file" id="csv-upload" accept=".csv" style="display:none;" onchange="handleCsvImport(this)"/>
+          </div>
+
+        </div>
+      </div><!-- /table-toolbar -->
+
+      <!-- Table -->
+      <div class="table-scroll-wrapper">
+        <div class="table-wrapper">
+          <table class="restock-table">
+            <thead>
+              <tr>
+                <th>Product Name</th>
+                <th>SKU</th>
+                <th>Category</th>
+                <th>Stock</th>
+                <th>Add Qty</th>
+                <th>Expiry Date</th>
+                <th>Price</th>
+                <th>Status</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              <?php if (empty($products)): ?>
+                <tr class="empty-state">
+                  <td colspan="9">No products found.</td>
+                </tr>
+              <?php else: ?>
+                <?php foreach ($products as $p):
+                  // Determine badge class
+                  $status = htmlspecialchars($p['status'] ?? 'In Stock');
+                  $badgeClass = match($p['status'] ?? '') {
+                      'Out of Stock' => 'badge-out-of-stock',
+                      'Low Stock'    => 'badge-low-stock',
+                      'Near Expiry'  => 'badge-near-expiry',
+                      'Expired'      => 'badge-expired',
+                      default        => 'badge-in-stock',
+                  };
+
+                  // Determine display status label
+                  $statusLabel = $p['status'] ?? 'In Stock';
+                  if (empty($statusLabel)) $statusLabel = 'In Stock';
+
+                  // Format expiry date
+                  $expiryDisplay = '';
+                  if (!empty($p['expiration_date'])) {
+                      try {
+                          $dt = new DateTime($p['expiration_date']);
+                          $expiryDisplay = $dt->format('m/d/y');
+                      } catch (Exception $e) {
+                          $expiryDisplay = htmlspecialchars($p['expiration_date']);
+                      }
+                  } else {
+                      $expiryDisplay = 'No Expiry Date';
+                  }
+
+                  // Price display (retail_price for display, cost_price for restock)
+                  $displayPrice = number_format((float)($p['retail_price'] ?? 0), 0);
+                  $rowQtyId     = 'qty_' . (int)$p['product_id'];
+                ?>
+                <tr>
+                  <!-- Product Name -->
+                  <td class="td-product-name"><?= htmlspecialchars($p['product_name']) ?></td>
+
+                  <!-- SKU -->
+                  <td class="td-sku"><?= htmlspecialchars($p['sku']) ?></td>
+
+                  <!-- Category -->
+                  <td class="td-category"><?= htmlspecialchars($p['category_name']) ?></td>
+
+                  <!-- Current Stock -->
+                  <td class="td-stock"><?= (int)$p['quantity'] ?></td>
+
+                  <!-- Add Qty Stepper -->
+                  <td class="td-qty">
+                    <div class="qty-stepper">
+                      <button type="button" onclick="changeQty('<?= $rowQtyId ?>', 1)" title="Increase">
+                        <!--
+                          TODO: Replace with your circle-add icon.
+                          e.g. <img src="pics_icons/lsicon-circle-add-outline.svg" alt="+" width="16" height="16"/>
+                        -->
+                        <i class="bi bi-plus-circle" style="font-size:16px;"></i>
+                      </button>
+                      <input
+                        class="qty-input"
+                        type="number"
+                        id="<?= $rowQtyId ?>"
+                        name="qty_<?= (int)$p['product_id'] ?>"
+                        min="1"
+                        value="1"
+                      />
+                      <button type="button" onclick="changeQty('<?= $rowQtyId ?>', -1)" title="Decrease">
+                        <!--
+                          TODO: Replace with your minus icon.
+                          e.g. <img src="pics_icons/lsicon-minus-outline.svg" alt="-" width="16" height="16"/>
+                        -->
+                        <i class="bi bi-dash-circle" style="font-size:16px;"></i>
+                      </button>
+                    </div>
+                  </td>
+
+                  <!-- Expiry Date -->
+                  <td class="td-expiry">
+                    <div class="expiry-wrap">
+                      <span><?= $expiryDisplay ?></span>
+                      <!--
+                        TODO: Replace with your calendar icon.
+                        e.g. <img src="pics_icons/uiw-date.svg" alt="date" width="20" height="20"/>
+                      -->
+                      <i class="bi bi-calendar3"></i>
+                    </div>
+                  </td>
+
+                  <!-- Price -->
+                  <td class="td-price">₱ <?= $displayPrice ?></td>
+
+                  <!-- Status Badge -->
+                  <td class="td-status">
+                    <span class="status-badge <?= $badgeClass ?>"><?= htmlspecialchars($statusLabel) ?></span>
+                  </td>
+
+                  <!-- Actions -->
+                  <td class="td-actions">
+                    <div class="actions-wrap">
+                      <!-- Restock (submit) button wrapped in form -->
+                      <form method="post" style="display:contents;">
+                        <input type="hidden" name="action"     value="restock"/>
+                        <input type="hidden" name="product_id" value="<?= (int)$p['product_id'] ?>"/>
+                        <input type="hidden" name="cost_price" value="<?= (float)$p['cost_price'] ?>"/>
+                        <input type="hidden" name="qty_added"  id="hidden_<?= $rowQtyId ?>"/>
+                        <!-- View / Restock button -->
+                        <button
+                          type="submit"
+                          class="btn-action"
+                          title="Restock this product"
+                          onclick="document.getElementById('hidden_<?= $rowQtyId ?>').value = document.getElementById('<?= $rowQtyId ?>').value;"
+                        >
+                          <!--
+                            TODO: Replace with your view/restock icon.
+                            e.g. <img src="pics_icons/view.svg" alt="Restock" width="22" height="20"/>
+                          -->
+                          <i class="bi bi-eye"></i>
+                        </button>
+                      </form>
+
+                      <!-- Delete button -->
+                      <form method="post" style="display:contents;" onsubmit="return confirm('Remove this product?');">
+                        <input type="hidden" name="action"     value="delete"/>
+                        <input type="hidden" name="product_id" value="<?= (int)$p['product_id'] ?>"/>
+                        <button type="submit" class="btn-action" title="Delete">
+                          <!--
+                            TODO: Replace with your trash icon.
+                            e.g. <img src="pics_icons/trash.svg" alt="Delete" width="22" height="20"/>
+                          -->
+                          <i class="bi bi-trash3"></i>
+                        </button>
+                      </form>
+                    </div>
+                  </td>
+
+                </tr>
+                <?php endforeach; ?>
+              <?php endif; ?>
+            </tbody>
+          </table>
+        </div><!-- /table-wrapper -->
+      </div><!-- /table-scroll-wrapper -->
+
+      <!-- Pagination Row -->
+      <div class="pagination-row">
+        <!-- Prev -->
+        <?php if ($current_page > 1): ?>
+          <a href="<?= htmlspecialchars(pageUrl($current_page - 1, $tab, $search)) ?>" class="btn-page">
+            <!--
+              TODO: Replace with your left-arrow icon.
+              e.g. <img src="pics_icons/tabler-arrow-left.svg" alt="Prev" width="24"/>
+            -->
+            <i class="bi bi-arrow-left"></i>
+            Prev
+          </a>
         <?php else: ?>
-          <?php foreach ($products as $p):
-            $sClass = match($p['status']) {
-                'Out of Stock' => 'status-out',
-                'Low Stock'    => 'status-low',
-                default        => 'status-in',
-            };
-          ?>
-          <tr>
-            <td><?= htmlspecialchars($p['product_name']) ?></td>
-            <td><?= htmlspecialchars($p['sku']) ?></td>
-            <td><?= htmlspecialchars($p['category_name']) ?></td>
-            <td><?= (int)$p['quantity'] ?> pcs</td>
-            <td><span class="<?= $sClass ?>"><?= htmlspecialchars($p['status']) ?></span></td>
-            <td>
-              <form method="post" style="display:flex;align-items:center;gap:8px;">
-                <input type="hidden" name="product_id" value="<?= (int)$p['product_id'] ?>"/>
-                <input type="hidden" name="cost_price"  value="<?= (float)$p['cost_price'] ?>"/>
-                <input class="restock-qty" type="number" name="qty_added" min="1" value="1" required/>
-                <button type="submit" class="btn-restock">Restock</button>
-              </form>
-            </td>
-            <td><?= (int)$p['total_restocked'] ?> pcs</td>
-          </tr>
-          <?php endforeach; ?>
+          <button class="btn-page" disabled style="opacity:0.4;cursor:default;">
+            <i class="bi bi-arrow-left"></i>
+            Prev
+          </button>
         <?php endif; ?>
-      </tbody>
-    </table>
-  </div>
-</div>
+
+        <!-- Next -->
+        <?php if ($current_page < $total_pages): ?>
+          <a href="<?= htmlspecialchars(pageUrl($current_page + 1, $tab, $search)) ?>" class="btn-page">
+            Next
+            <!--
+              TODO: Replace with your right-arrow icon.
+              e.g. <img src="pics_icons/mingcute-arrow-right-line.svg" alt="Next" width="24"/>
+            -->
+            <i class="bi bi-arrow-right"></i>
+          </a>
+        <?php else: ?>
+          <button class="btn-page" disabled style="opacity:0.4;cursor:default;">
+            Next
+            <i class="bi bi-arrow-right"></i>
+          </button>
+        <?php endif; ?>
+      </div><!-- /pagination-row -->
+
+      <!-- Bottom Actions -->
+      <div class="bottom-actions">
+        <button type="button" class="btn-cancel" onclick="window.location.href='restock.php'">Cancel</button>
+        <button type="button" class="btn-complete" onclick="handleComplete()">Complete</button>
+      </div>
+
+    </div><!-- /table-section -->
+
+  </div><!-- /main-body -->
+</div><!-- /page-wrapper -->
+
+<script>
+// ── Qty Stepper ──────────────────────────────────────────────
+function changeQty(inputId, delta) {
+  const input = document.getElementById(inputId);
+  if (!input) return;
+  let val = parseInt(input.value, 10) || 1;
+  val += delta;
+  if (val < 1) val = 1;
+  input.value = val;
+}
+
+// ── CSV Import Handler ───────────────────────────────────────
+function handleCsvImport(fileInput) {
+  if (!fileInput.files || !fileInput.files[0]) return;
+  const file = fileInput.files[0];
+  if (!file.name.endsWith('.csv')) {
+    alert('Please select a valid CSV file.');
+    fileInput.value = '';
+    return;
+  }
+  // TODO: Implement actual CSV upload logic to your server endpoint.
+  // e.g. use FormData + fetch() to POST the file to import_csv.php
+  alert('CSV file selected: ' + file.name + '\n(Connect this to your import endpoint.)');
+  fileInput.value = '';
+}
+
+// ── Complete Button ──────────────────────────────────────────
+function handleComplete() {
+  // The "Complete" button can trigger a batch restock of all checked items,
+  // or simply redirect. Adjust this logic to match your workflow.
+  alert('Restock complete! Inventory has been updated.');
+  window.location.href = 'restock.php';
+}
+
+// ── Searchbar: submit on Enter ───────────────────────────────
+document.addEventListener('DOMContentLoaded', function () {
+  const searchInput = document.querySelector('.searchbar input[type="text"]');
+  if (searchInput) {
+    searchInput.addEventListener('keydown', function (e) {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        this.closest('form').submit();
+      }
+    });
+  }
+});
+</script>
+
 </body>
 </html>

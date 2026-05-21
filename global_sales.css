@@ -1,29 +1,72 @@
-/* global_sales.css */
+/* global_sales.css
+   Load order in sales.php:
+     global_sidebar.css → global_sales.css → sidebar.css → sales.css
+*/
+
 body {
   margin: 0;
   line-height: normal;
 }
 
 :root {
-  /* ── Spacing ── */
+
+  /* ================================================================
+     SIDEBAR VARIABLES — must match global_sidebar.css exactly
+     ================================================================ */
   --Space-0:   0px;
   --Space-050: 2px;
 
-  /* ── Brand / Accent Colors ── */
-  --Accents-Orange: #ff8d28;
-  --blue:           #2583c2;
-  --green:          #159459;
   --yellow:         #ebd665;
   --yellow-white:   #fdf3db;
   --yellow-white-1: #fcf8ee;
 
-  /* ── UI Colors ── */
-  --color-black:     #000;
-  --color-cornsilk:  #fff5d9;
+  --color-black:    #000;
+  --color-cornsilk: #fff5d9;
+  --color-gray-100: #3e2c23;
+  --color-gray-200: #2b2b2b;
+  --color-gray-300: rgba(0, 0, 0, 0.01);
+
+  --gap-6:  6px;
+  --gap-10: 10px;
+  --gap-15: 15px;
+  --gap-20: 20px;
+
+  --padding-0:  0px;
+  --padding-4:  4px;
+  --padding-5:  5px;
+  --padding-10: 10px;
+  --padding-13: 13px;
+  --padding-14: 14px;
+  --padding-15: 15px;
+  --padding-20: 20px;
+
+  --br-5_5: 5.5px;
+  --br-10:  10px;
+  --br-15:  15px;
+  --br-20:  20px;
+
+  --font-inter: Inter, sans-serif;
+
+  --fs-13: 13px;
+  --fs-15: 15px;
+  --fs-16: 16px;
+  --fs-18: 18px;
+  --fs-19: 19px;
+
+  --width-24: 24px;
+  --ls--0_04: -0.04;
+
+  /* ================================================================
+     SALES PAGE VARIABLES
+     ================================================================ */
+
+  /* Accent Colors */
+  --Accents-Orange: #ff8d28;
+  --blue:           #2583c2;
+  --green:          #159459;
+
+  /* Extra UI Colors */
   --color-gainsboro: #dfe5ee;
-  --color-gray-100:  #3e2c23;
-  --color-gray-200:  #2b2b2b;
-  --color-gray-300:  rgba(62, 44, 35, 0.85);
   --color-gray-400:  rgba(62, 44, 35, 0.80);
   --color-gray-500:  rgba(0, 0, 0, 0.01);
   --color-lavender:  #e3ebff;
@@ -32,49 +75,38 @@ body {
   --color-white:     #fff;
   --green1:          rgba(216, 254, 213, 0.50);
 
-  /* ── Gap ── */
-  --gap-6:  6px;
+  /* Stat value text */
+  --color-gray-300: rgba(62, 44, 35, 0.85);
+
+  /* Primary brown — used for section panel borders */
+  --1-brown: #3e2c23;
+
+  /* Gap (additional) */
   --gap-7:  7px;
-  --gap-10: 10px;
-  --gap-15: 15px;
-  --gap-20: 20px;
   --gap-22: 22px;
 
-  /* ── Padding ── */
-  --padding-0:  0px;
-  --padding-4:  4px;
-  --padding-5:  5px;
-  --padding-10: 10px;
-  --padding-13: 13px;
-  --padding-14: 14px;
-  --padding-15: 15px;
+  /* Padding (additional) */
   --padding-18: 18px;
   --padding-19: 19px;
-  --padding-20: 20px;
 
-  /* ── Border Radius ── */
-  --br-5_5: 5.5px;
-  --br-10:  10px;
-  --br-15:  15px;
-  --br-20:  20px;
-
-  /* ── Font ── */
-  --font-inter: Inter, sans-serif;
-
-  /* ── Font Sizes ── */
-  --fs-13: 13px;
-  --fs-15: 15px;
-  --fs-16: 16px;
-  --fs-18: 18px;
-  --fs-19: 19px;
+  /* Font Sizes (additional) */
   --fs-20: 20px;
   --fs-24: 24px;
 
-  /* ── Borders ── */
-  --border-1: 1px solid var(--color-white);
-  --border-2: 1px dashed var(--color-gainsboro);
+  /* ── Borders ──
+     --border-section : visible dark border used on all main panel cards
+                        (same look as restock / dashboard)
+     --border-card    : card-level border (faint, existing)
+     --border-dashed  : dashed separator
+  */
+  --border-section: 1px solid rgba(62, 44, 35, 0.25);   /* visible panel outline */
+  --border-card:    1px solid rgba(62, 44, 35, 0.12);   /* inner card outline    */
+  --border-1:       1px solid rgba(62, 44, 35, 0.12);   /* legacy alias          */
+  --border-2:       1px solid var(--1-brown);
+  --border-3:       1px solid var(--color-white);
+  --border-4:       1px dashed rgba(62, 44, 35, 0.20);
 
-  /* ── Shadows ── */
+  /* Shadows */
   --shadow-drop:   1px 2px 20.6px rgba(62, 44, 35, 0.10);
   --shadow-drop-1: 15px 22px 7px rgba(62,44,35,0),
                    10px 14px 7px rgba(62,44,35,0.01),
@@ -89,7 +121,7 @@ body {
                     1px  1px 2px rgba(62,44,35,0.05);
   --text-shadow-1: 0px 0px 10px rgba(43,43,43,0.35);
 
-  /* ── Gradients ── */
+  /* Gradients */
   --gradient-1: linear-gradient(
     146.01deg,
     rgba(253,253,253,0.6),
@@ -97,7 +129,7 @@ body {
     rgba(255,244,216,0.6)
   );
 
-  /* ── Width / Heights ── */
+  /* Width / Heights */
   --height-1:  1px;
   --height-16: 16px;
   --height-19: 19px;
@@ -105,7 +137,6 @@ body {
   --height-30: 30px;
   --height-55: 55px;
   --height-70: 70px;
-  --width-24:  24px;
   --width-70:  70px;
   --width-100: 100px;
 }

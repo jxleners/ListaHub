@@ -558,6 +558,7 @@ body {
 .btn-cash.active { background-color: var(--color-mediumseagreen); }
 .btn-cash:hover  { background-color: var(--color-mediumseagreen); }
 
+
 .pay-other-btns {
   display: flex;
   align-items: flex-start;

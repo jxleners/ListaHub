@@ -145,11 +145,12 @@ $chartValuesJson = json_encode($chartValues);
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>Sales Analytics – ListaHub</title>
 
-  <!--
-    TODO: Update href paths below to match your project structure.
-    e.g. if CSS lives in a /css/ folder: href="css/global_sales.css"
-  -->
+  <!-- Global CSS (variables, reset) -->
+   <link rel="stylesheet" href="global_sidebar.css"/>
   <link rel="stylesheet" href="global_sales.css"/>
+
+  <!-- Component CSS -->
+  <link rel="stylesheet" href="sidebar.css"/>
   <link rel="stylesheet" href="sales.css"/>
 
   <!--
@@ -299,7 +300,7 @@ $chartValuesJson = json_encode($chartValues);
                       TODO: Replace src with your monthly-sales icon.
                       e.g. src="pics_icons/Group-494.svg"
                     -->
-                    <img class="card-icon" alt="" src="pics_icons/calendar (1).png"/>
+                    <img class="card-icon" alt="" src="pics_icons/payroll-calendar.png"/>
                   </div>
                   <div class="card-text">
                     <span class="card-label">Sales this Month</span>
