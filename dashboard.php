@@ -243,12 +243,9 @@ $activePage = 'dashboard';
             <!-- Gross Sales -->
             <div class="stat-card lavender-bg">
               <div class="stat-icon icon-blue">
-                <!--
-                  NOTE: Replace with your gross sales icon image, e.g.:
-                  <img src="./public/gross-sales-icon.svg" width="33" alt="Gross Sales"/>
-                  Fallback Bootstrap Icon shown below:
-                -->
-                <i class="bi bi-cash-stack"></i>
+                
+                  <img src="pics_icons/money (4).png" width="33" alt="Gross Sales"/>
+                  
               </div>
               <div class="stat-info">
                 <span class="stat-label">Gross Sales</span>

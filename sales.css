@@ -7,7 +7,7 @@
   display: flex;
   min-height: 100vh;
   width: 100%;
-  background-image: url('/* TODO: replace with your background image path, e.g. ./public/Sales@3x.png */');
+  background-image: url('pics_icons/bg2_blank.png'); /* TODO: update path to your bg image */
   background-size: cover;
   background-repeat: no-repeat;
   background-position: top center;
@@ -318,20 +318,40 @@
   min-width: 166px;
   display: flex;
   align-items: center;
-  justify-content: center;
-  flex-wrap: wrap;
+  justify-content: flex-start;
+  flex-wrap: nowrap;
   align-content: center;
-  padding: var(--padding-10);
+  padding: 12px 14px;
   border-radius: var(--br-20);
   border: var(--border-1);
   box-sizing: border-box;
-  gap: var(--gap-15);
+  gap: 12px;
 }
 
-.stat-card .card-icon {
+/* Icon circle wrapper — 55px circle matching the design */
+.card-icon-wrap {
+  width: 55px;
+  height: 55px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+/* Color variants — matching dashboard icon colours */
+.card-icon-wrap.icon-blue   { background-color: rgba(37, 131, 194, 0.80); }
+.card-icon-wrap.icon-yellow { background-color: var(--yellow); }
+.card-icon-wrap.icon-green  { background-color: rgba(21, 148, 89, 0.80); }
+.card-icon-wrap.icon-gray   { background-color: rgba(62, 44, 35, 0.80); }
+.card-icon-wrap.icon-orange { background-color: #ff8d28; }
+.card-icon-wrap.icon-red    { background-color: rgba(235, 69, 58, 0.80); }
+
+.stat-card .card-icon,
+.status-card .card-icon {
   /* TODO: replace each card-icon src with your icon paths */
-  width: var(--width-70);
-  height: var(--height-70);
+  width: 26px;
+  height: 26px;
   object-fit: contain;
   flex-shrink: 0;
 }
@@ -340,7 +360,7 @@
   display: flex;
   flex-direction: column;
   align-items: flex-start;
-  gap: var(--gap-7);
+  gap: 4px;
 }
 
 .stat-card .card-label {
@@ -432,14 +452,14 @@
   min-width: 153px;
   display: flex;
   align-items: center;
-  justify-content: center;
-  flex-wrap: wrap;
+  justify-content: flex-start;
+  flex-wrap: nowrap;
   align-content: center;
-  padding: var(--padding-10) 9px;
+  padding: 12px 14px;
   border-radius: var(--br-20);
   border: var(--border-1);
   box-sizing: border-box;
-  gap: var(--gap-15);
+  gap: 12px;
 }
 
 .status-card.cream {
@@ -451,14 +471,6 @@
   box-shadow: var(--shadow-drop-1);
   backdrop-filter: blur(45px);
   background-color: var(--color-lavender);
-}
-
-.status-card .card-icon {
-  /* TODO: replace src with appropriate icon path */
-  width: var(--width-70);
-  height: var(--height-70);
-  object-fit: contain;
-  flex-shrink: 0;
 }
 
 .status-card .card-text {
@@ -776,10 +788,29 @@
 .goods-mini-card.blue   .mini-value { color: var(--blue); }
 .goods-mini-card.green-wide .mini-value { color: var(--green); }
 
+/* Icon circle wrapper inside goods cards — same pattern as card-icon-wrap */
+.mini-icon-wrap {
+  width: 55px;
+  height: 55px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+/* Colour variants for goods mini-card icons */
+.mini-icon-wrap.icon-green  { background-color: rgba(21, 148, 89, 0.80); }
+.mini-icon-wrap.icon-orange { background-color: #ff8d28; }
+.mini-icon-wrap.icon-blue   { background-color: rgba(37, 131, 194, 0.80); }
+.mini-icon-wrap.icon-yellow { background-color: var(--yellow); }
+.mini-icon-wrap.icon-gray   { background-color: rgba(62, 44, 35, 0.80); }
+
+/* The actual <img> sits inside the wrap circle */
 .goods-mini-card .mini-icon {
-  /* TODO: replace src with your money-bag/goods icon, e.g. ./public/Group-494.svg */
-  width: var(--width-70);
-  height: var(--height-70);
+  /* TODO: replace src with your money-bag/goods icon, e.g. pics_icons/Group-494.svg */
+  width: 26px;
+  height: 26px;
   object-fit: contain;
   flex-shrink: 0;
 }

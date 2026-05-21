@@ -157,10 +157,7 @@ $activePage = 'manage-products';
   <!-- ============================================================
        SIDEBAR
        ============================================================ -->
-  <?php
-    $activePage = 'manage-products';
-    include 'sidebar.php';
-  ?>
+  <?php $activePage = 'manage-products'; include 'sidebar.php'; ?>
 
   <!-- ============================================================
        MAIN BODY
