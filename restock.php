@@ -244,11 +244,9 @@ $activePage = 'restock';
         <!-- Out of Stocks -->
         <div class="stat-card red-bg">
           <div class="stat-icon icon-red">
-            <!--
-              TODO: Replace with your out-of-stock icon image.
-              e.g. <img src="pics_icons/out-of-stock.png" width="33" alt="Out of Stock"/>
-            -->
-            <i class="bi bi-box-seam" style="font-size:28px;"></i>
+            
+              <img src="pics_icons/out-of-stock (1).png" width="33" alt="Out of Stock"/>
+            
           </div>
           <div class="stat-info">
             <span class="stat-label">Out of Stocks</span>
@@ -259,11 +257,9 @@ $activePage = 'restock';
         <!-- Expired Products -->
         <div class="stat-card orange-bg">
           <div class="stat-icon icon-orange">
-            <!--
-              TODO: Replace with your expired icon image.
-              e.g. <img src="pics_icons/expired.png" width="33" alt="Expired"/>
-            -->
-            <i class="bi bi-exclamation-circle" style="font-size:28px;"></i>
+            
+              <img src="pics_icons/expired.png" width="33" alt="Expired"/>
+            
           </div>
           <div class="stat-info">
             <span class="stat-label">Expired Products</span>
@@ -289,11 +285,9 @@ $activePage = 'restock';
         <!-- Near Expiry -->
         <div class="stat-card lavender-bg">
           <div class="stat-icon icon-blue">
-            <!--
-              TODO: Replace with your near-expiry icon image.
-              e.g. <img src="pics_icons/near-expiry.png" width="33" alt="Near Expiry"/>
-            -->
-            <i class="bi bi-exclamation-square" style="font-size:28px;"></i>
+           
+              <img src="pics_icons/duration-alt.png" width="33" alt="Near Expiry"/>
+            
           </div>
           <div class="stat-info">
             <span class="stat-label">Near Expiry</span>
