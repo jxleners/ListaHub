@@ -167,7 +167,7 @@ $chartValuesJson = json_encode($chartValues);
   <!-- ===================================================
        SIDEBAR
        =================================================== -->
-  <?php $activePage = 'dashboard'; include 'sidebar.php'; ?>
+  <?php $activePage = 'sales'; include 'sidebar.php'; ?>
 
   <!-- ===================================================
        MAIN BODY
@@ -192,7 +192,7 @@ $chartValuesJson = json_encode($chartValues);
                   TODO: Replace src with your gross sales icon.
                   e.g. src="pics_icons/Group-494.svg"
                 -->
-                <img class="card-icon" alt="" src="pics_icons/Group-494.svg"/>
+                <img class="card-icon" alt="" src="pics_icons/profit.png"/>
               </div>
               <div class="card-text">
                 <span class="card-label">Gross Sales</span>
@@ -207,7 +207,7 @@ $chartValuesJson = json_encode($chartValues);
                   TODO: Replace src with your profit icon.
                   e.g. src="pics_icons/Group-494.svg"
                 -->
-                <img class="card-icon" alt="" src="pics_icons/Group-494.svg"/>
+                <img class="card-icon" alt="" src="pics_icons/usd-circle.png"/>
               </div>
               <div class="card-text">
                 <span class="card-label">Profit</span>
@@ -225,7 +225,7 @@ $chartValuesJson = json_encode($chartValues);
                   TODO: Replace src with your cash-sales icon.
                   e.g. src="pics_icons/Group-494.svg"
                 -->
-                <img class="card-icon" alt="" src="pics_icons/Group-494.svg"/>
+                <img class="card-icon" alt="" src="pics_icons/money (4).png"/>
               </div>
               <div class="card-text">
                 <span class="card-label">Cash Sales</span>
@@ -240,7 +240,7 @@ $chartValuesJson = json_encode($chartValues);
                   TODO: Replace src with your online/gcash icon.
                   e.g. src="pics_icons/Group-494.svg"
                 -->
-                <img class="card-icon" alt="" src="pics_icons/Group-494.svg"/>
+                <img class="card-icon" alt="" src="pics_icons/digital-wallet.png"/>
               </div>
               <div class="card-text">
                 <span class="card-label">Online Sales<br>(G-Cash)</span>
@@ -266,7 +266,7 @@ $chartValuesJson = json_encode($chartValues);
                       TODO: Replace src with your items-sold icon.
                       e.g. src="pics_icons/Group-494.svg"
                     -->
-                    <img class="card-icon" alt="" src="pics_icons/Group-494.svg"/>
+                    <img class="card-icon" alt="" src="pics_icons/bags-shopping.png"/>
                   </div>
                   <div class="card-text">
                     <span class="card-label">Total Items Sold</span>
@@ -282,7 +282,7 @@ $chartValuesJson = json_encode($chartValues);
                       TODO: Replace src with your today's-sales / calendar icon.
                       e.g. src="pics_icons/Group-494.svg"
                     -->
-                    <img class="card-icon" alt="" src="pics_icons/Group-494.svg"/>
+                    <img class="card-icon" alt="" src="pics_icons/growth-chart-invest.png"/>
                   </div>
                   <div class="card-text">
                     <span class="card-label">Today's Sales</span>
@@ -299,7 +299,7 @@ $chartValuesJson = json_encode($chartValues);
                       TODO: Replace src with your monthly-sales icon.
                       e.g. src="pics_icons/Group-494.svg"
                     -->
-                    <img class="card-icon" alt="" src="pics_icons/Group-494.svg"/>
+                    <img class="card-icon" alt="" src="pics_icons/calendar (1).png"/>
                   </div>
                   <div class="card-text">
                     <span class="card-label">Sales this Month</span>
@@ -327,7 +327,7 @@ $chartValuesJson = json_encode($chartValues);
                 TODO: Replace src with your trend/arrow-up icon.
                 e.g. src="pics_icons/Group.svg"
               -->
-              <img alt="" src="pics_icons/Group.svg"/>
+              <img alt="" src="pics_icons/profit.png"/>
             </div>
             <h3 class="chart-card-title">Gross Sales</h3>
           </div>
@@ -388,11 +388,13 @@ $chartValuesJson = json_encode($chartValues);
               <!-- Row 2: Total Retail Value of Stock (full width) -->
               <div class="goods-bottom">
                 <div class="goods-mini-card green-wide" style="flex:1;min-width:100%;">
-                  <!--
-                    TODO: Replace src with your money-bag/stock icon.
-                    e.g. src="pics_icons/Group-494.svg"
-                  -->
-                  <img class="mini-icon" alt="" src="pics_icons/Group-494.svg"/>
+                  <div class="mini-icon-wrap icon-green">
+                    <!--
+                      TODO: Replace src with your money-bag/stock icon.
+                      e.g. src="pics_icons/money (5).png"
+                    -->
+                    <img class="mini-icon" alt="" src="pics_icons/money (5).png"/>
+                  </div>
                   <div class="mini-text">
                     <span class="mini-label">Total Retail Value of Stock</span>
                     <h3 class="mini-value">₱<?= number_format((float) s('total_retail_value'), 0) ?></h3>
