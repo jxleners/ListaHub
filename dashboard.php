@@ -3,8 +3,8 @@
 //  dashboard.php
 //  Requirements met:
 //   ✅ SQL View (vw_manager_dashboard) used for reporting
-//   ✅ COUNT(), SUM() done in DB — not PHP loops
-//   ✅ PDO prepared statement
+//   ✅ COUNT(), SUM() done in DB
+//   ✅ PDO prepared statements
 //   ✅ try-catch
 //   ✅ Session-based auth guard
 // ============================================================
@@ -17,41 +17,106 @@ if (!isset($_SESSION['user_id'])) {
 
 require_once './utils/lhdb.php';
 
+$user_id = (int) $_SESSION['user_id'];
+
 try {
     $pdo = getPDO();
 
-    // ── Pull everything from the VIEW (DB does all the heavy lifting) ──
-    // Requirement: Use the SQL View for the manager dashboard
     $stmt = $pdo->prepare(
-        "SELECT * FROM vw_manager_dashboard WHERE store_id = :store_id"
+        "SELECT
+            COUNT(*)                                             AS total_products,
+            SUM(current_stock)                                   AS total_stock_units,
+            SUM(CASE WHEN stock_status = 'Out of Stock' THEN 1 ELSE 0 END) AS out_of_stock_count,
+            SUM(CASE WHEN stock_status = 'Low Stock'    THEN 1 ELSE 0 END) AS low_stock_count,
+            SUM(CASE WHEN expiration_date < CURDATE()   THEN 1 ELSE 0 END) AS expired_count,
+            SUM(CASE WHEN expiration_date BETWEEN CURDATE()
+                     AND DATE_ADD(CURDATE(), INTERVAL 30 DAY)  THEN 1 ELSE 0 END) AS near_expiry_count,
+            SUM(total_units_sold)                                AS total_units_sold,
+            SUM(total_revenue)                                   AS total_revenue,
+            SUM(current_stock * cost_price)                      AS total_cost_value,
+            SUM(current_stock * retail_price)                    AS total_retail_value
+         FROM vw_manager_dashboard
+         WHERE user_id = :user_id"
     );
-    $stmt->execute([':store_id' => $_SESSION['store_id']]);
+    $stmt->execute([':user_id' => $user_id]);
     $stats = $stmt->fetch();
 
-    // ── Monthly revenue breakdown (SUM + GROUP BY in DB) ──────────────
-    $monthlyStmt = $pdo->prepare(
-        "SELECT DATE_FORMAT(sale_date, '%b %Y') AS month_label,
-                SUM(total_amount)               AS monthly_total
-         FROM   sales
-         WHERE  store_id = :store_id
-           AND  sale_date >= DATE_SUB(NOW(), INTERVAL 6 MONTH)
-         GROUP  BY DATE_FORMAT(sale_date, '%Y-%m')
-         ORDER  BY MIN(sale_date) ASC"
+    // Today's revenue
+    $todayStmt = $pdo->prepare(
+        "SELECT COALESCE(SUM(s.total_amount), 0) AS todays_revenue
+         FROM Sale s
+         JOIN Sale_Item si ON si.sale_id = s.sale_id
+         JOIN Product   p  ON p.product_id = si.product_id
+         WHERE p.user_id = :user_id AND DATE(s.sale_date) = CURDATE()"
     );
-    $monthlyStmt->execute([':store_id' => $_SESSION['store_id']]);
+    $todayStmt->execute([':user_id' => $user_id]);
+    $todayRow = $todayStmt->fetch();
+
+    // Total transactions
+    $txStmt = $pdo->prepare(
+        "SELECT COUNT(DISTINCT s.sale_id) AS total_transactions
+         FROM Sale s
+         JOIN Sale_Item si ON si.sale_id = s.sale_id
+         JOIN Product   p  ON p.product_id = si.product_id
+         WHERE p.user_id = :user_id"
+    );
+    $txStmt->execute([':user_id' => $user_id]);
+    $txRow = $txStmt->fetch();
+
+    // Monthly revenue breakdown (last 6 months)
+    $monthlyStmt = $pdo->prepare(
+        "SELECT DATE_FORMAT(s.sale_date, '%b %Y') AS month_label,
+                SUM(s.total_amount)               AS monthly_total
+         FROM   Sale s
+         JOIN   Sale_Item si ON si.sale_id = s.sale_id
+         JOIN   Product   p  ON p.product_id = si.product_id
+         WHERE  p.user_id = :user_id
+           AND  s.sale_date >= DATE_SUB(NOW(), INTERVAL 6 MONTH)
+         GROUP  BY DATE_FORMAT(s.sale_date, '%Y-%m')
+         ORDER  BY MIN(s.sale_date) ASC"
+    );
+    $monthlyStmt->execute([':user_id' => $user_id]);
     $monthlyData = $monthlyStmt->fetchAll();
+
+    // Profit (total_revenue - total_cost_value)
+    $profit = ((float)($stats['total_revenue'] ?? 0)) - ((float)($stats['total_cost_value'] ?? 0));
+
+    // Customer credit stats
+    $custStmt = $pdo->prepare(
+        "SELECT
+            COUNT(*)                                                   AS total_customers,
+            SUM(CASE WHEN balance > 0 THEN 1 ELSE 0 END)              AS unsettled_count,
+            COALESCE(SUM(balance), 0)                                  AS total_credit
+         FROM Customer
+         WHERE user_id = :user_id"
+    );
+    $custStmt->execute([':user_id' => $user_id]);
+    $custRow = $custStmt->fetch();
+
+    // Inventory status percentages for progress bars
+    $totalProducts = max((int)($stats['total_products'] ?? 0), 1);
+    $lowStockPct   = round(((int)($stats['low_stock_count']   ?? 0) / $totalProducts) * 100);
+    $outStockPct   = round(((int)($stats['out_of_stock_count'] ?? 0) / $totalProducts) * 100);
+    $nearExpiryPct = round(((int)($stats['near_expiry_count'] ?? 0) / $totalProducts) * 100);
+    $expiredPct    = round(((int)($stats['expired_count']     ?? 0) / $totalProducts) * 100);
 
 } catch (PDOException $e) {
     error_log("Dashboard error: " . $e->getMessage());
-    $stats       = [];
-    $monthlyData = [];
+    $stats        = [];
+    $monthlyData  = [];
+    $todayRow     = ['todays_revenue' => 0];
+    $txRow        = ['total_transactions' => 0];
+    $custRow      = ['total_customers' => 0, 'unsettled_count' => 0, 'total_credit' => 0];
+    $profit       = 0;
+    $lowStockPct  = $outStockPct = $nearExpiryPct = $expiredPct = 0;
 }
 
-// Helper: safely get a value from $stats
 function getStat(string $key, $default = 0) {
     global $stats;
     return $stats[$key] ?? $default;
 }
+
+$activePage = 'dashboard';
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -59,136 +124,419 @@ function getStat(string $key, $default = 0) {
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>Dashboard – ListaHub</title>
-  <link href="https://fonts.googleapis.com/css2?family=Sora:wght@400;600;700;800&display=swap" rel="stylesheet"/>
-  <style>
-    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-    :root {
-      --sidebar-bg: #4a4a4a;
-      --sidebar-width: 240px;
-      --main-bg: #f4f5f7;
-      --card-bg: #e2e4e8;
-      --nav-item: #6b6b6b;
-      --nav-text: #ddd;
-      --nav-active: #e8e8e8;
-    }
-    body { font-family:'Sora',sans-serif; display:flex; min-height:100vh; background:var(--main-bg); }
 
-    aside {
-      width:var(--sidebar-width); background:var(--sidebar-bg);
-      display:flex; flex-direction:column; padding:20px 16px; gap:8px;
-      position:fixed; top:0; left:0; bottom:0;
-      border-radius:0 16px 16px 0; z-index:10;
-    }
-    .sidebar-logo { background:#6b6b6b; color:#eee; text-align:center; font-weight:700; font-size:15px; padding:12px; border-radius:12px; margin-bottom:10px; }
-    .sidebar-label { color:#aaa; font-size:11px; font-weight:600; text-transform:uppercase; letter-spacing:.8px; padding:8px 8px 2px; }
-    .sidebar-item { background:var(--nav-item); color:var(--nav-text); border-radius:12px; padding:11px 16px; font-size:14px; font-weight:600; text-decoration:none; display:block; transition:background .2s; }
-    .sidebar-item:hover { background:#7a7a7a; }
-    .sidebar-item.active { background:var(--nav-active); color:#111; }
-    .sidebar-logout { margin-top:auto; background:#616161; color:#ddd; border-radius:12px; padding:11px 16px; font-size:14px; font-weight:600; cursor:pointer; border:none; width:100%; text-align:left; }
-    .sidebar-logout:hover { background:#7a7a7a; }
+  <!-- Google Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com"/>
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Roboto:wght@600&display=swap" rel="stylesheet"/>
 
-    .main-content { margin-left:var(--sidebar-width); flex:1; padding:36px 40px; display:flex; flex-direction:column; gap:24px; }
+  <!-- Bootstrap Icons -->
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css"/>
 
-    .topbar { display:flex; justify-content:flex-end; }
-    .user-card { background:#e8e8e8; border-radius:12px; padding:10px 16px; display:flex; align-items:center; gap:12px; }
-    .user-name { font-weight:700; font-size:14px; color:#222; }
-    .user-store { font-size:12px; color:#666; }
-    .user-avatar { width:40px; height:40px; background:#888; border-radius:50%; }
+  <!-- Global CSS (variables, reset) -->
+  <link rel="stylesheet" href="global_sidebar.css"/>
+  <link rel="stylesheet" href="global_dashboard.css"/>
 
-    .section-title { font-size:22px; font-weight:800; color:#111; }
-
-    .cards-grid { display:grid; grid-template-columns:repeat(4,1fr); gap:16px; }
-    .stat-card { background:var(--card-bg); border-radius:14px; padding:18px 20px 24px; }
-    .stat-card .label { font-size:13px; color:#555; margin-bottom:14px; }
-    .stat-card .value { font-size:26px; font-weight:700; color:#111; }
-
-    .sales-grid { display:grid; grid-template-columns:repeat(4,1fr); gap:16px; }
-    .charts-row { display:grid; grid-template-columns:3fr 2fr; gap:16px; }
-    .chart-card { background:var(--card-bg); border-radius:14px; padding:20px; min-height:180px; }
-    .chart-title { font-size:16px; font-weight:700; color:#111; margin-bottom:12px; }
-
-    .monthly-table { width:100%; border-collapse:collapse; font-size:13px; }
-    .monthly-table th, .monthly-table td { padding:8px 10px; text-align:left; border-bottom:1px solid #ccc; }
-    .monthly-table th { color:#555; font-weight:600; }
-  </style>
+  <!-- Component CSS -->
+  <link rel="stylesheet" href="sidebar.css"/>
+  <link rel="stylesheet" href="dashboard.css"/>
 </head>
 <body>
-<aside>
-  <div class="sidebar-logo">Logo</div>
-  <a class="sidebar-item active" href="dashboard.php">Dashboard</a>
-  <div class="sidebar-label">Inventory</div>
-  <a class="sidebar-item" href="manage-products.php">Manage Products</a>
-  <a class="sidebar-item" href="restock.php">Restock</a>
-  <div class="sidebar-label">Sales</div>
-  <a class="sidebar-item" href="sales.php">Sales Analytics</a>
-  <div class="sidebar-label">Customer Credit</div>
-  <a class="sidebar-item" href="customers.php">Customers</a>
-  <form method="post" action="logout.php" style="margin-top:auto;">
-    <button class="sidebar-logout" type="submit">Log out</button>
-  </form>
-</aside>
 
-<div class="main-content">
-  <div class="topbar">
-    <div class="user-card">
-      <div>
-        <div class="user-name"><?= htmlspecialchars($_SESSION['username']) ?></div>
-        <div class="user-store"><?= htmlspecialchars($_SESSION['store_name'] ?? '') ?></div>
+<div class="page-wrapper">
+
+  <!-- ============================================================
+       SIDEBAR
+       sidebar.php sets $activePage and renders the aside.
+       Make sure sidebar.php, sidebar.css, and global_sidebar.css
+       are in the same directory as this file.
+       ============================================================ -->
+  <?php
+    $activePage = 'dashboard';
+    include 'sidebar.php';
+  ?>
+
+  <!-- ============================================================
+       MAIN BODY
+       ============================================================ -->
+  <div class="main-body">
+
+    <!-- ── OVERVIEW ROW: Inventory + Sales ── -->
+    <div class="overview-row">
+
+      <!-- ── Inventory Overview ── -->
+      <div class="section-container">
+        <h2 class="section-title">Inventory Overview</h2>
+        <div class="cards-grid">
+
+          <div class="cards-row">
+            <!-- Out of Stock -->
+            <div class="stat-card red-bg">
+              <div class="stat-icon icon-red">
+              
+                  <img src="pics_icons/out-of-stock (1).png" width="33" alt="Out of Stock"/>
+                
+              </div>
+              <div class="stat-info">
+                <span class="stat-label">Out of Stock</span>
+                <span class="stat-value red"><?= (int)getStat('out_of_stock_count') ?> Products</span>
+              </div>
+            </div>
+
+            <!-- Expired Products -->
+            <div class="stat-card linen-bg">
+              <div class="stat-icon icon-orange">
+                <!--
+                  NOTE: Replace with your expired products icon image, e.g.:
+                  <img src="./public/expired-icon.svg" width="33" alt="Expired"/>
+                  Fallback Bootstrap Icon shown below:
+                -->
+                <i class="bi bi-exclamation-circle"></i>
+              </div>
+              <div class="stat-info">
+                <span class="stat-label">Expired Products</span>
+                <span class="stat-value orange"><?= (int)getStat('expired_count') ?> Products</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="cards-row">
+            <!-- Low on Stock -->
+            <div class="stat-card cream-bg">
+              <div class="stat-icon icon-gray">
+                
+                  <img src="pics_icons/arrow-trend-down.png" width="33" alt="Low Stock"/>
+                
+              </div>
+              <div class="stat-info">
+                <span class="stat-label">Low on Stock</span>
+                <span class="stat-value gray"><?= (int)getStat('low_stock_count') ?> Products</span>
+              </div>
+            </div>
+
+            <!-- Near Expiration -->
+            <div class="stat-card cream-bg">
+              <div class="stat-icon icon-gray">
+                <!--
+                  NOTE: Replace with your near expiry icon image, e.g.:
+                  <img src="./public/near-expiry-icon.svg" width="33" alt="Near Expiry"/>
+                  Fallback Bootstrap Icon shown below:
+                -->
+                <i class="bi bi-hourglass-split"></i>
+              </div>
+              <div class="stat-info">
+                <span class="stat-label">Near Expiration</span>
+                <span class="stat-value gray"><?= (int)getStat('near_expiry_count') ?> Products</span>
+              </div>
+            </div>
+          </div>
+
+        </div>
+      </div><!-- /Inventory Overview -->
+
+      <!-- ── Sales Overview ── -->
+      <div class="section-container">
+        <h2 class="section-title">Sales Overview</h2>
+        <div class="cards-grid">
+
+          <div class="cards-row">
+            <!-- Gross Sales -->
+            <div class="stat-card lavender-bg">
+              <div class="stat-icon icon-blue">
+                <!--
+                  NOTE: Replace with your gross sales icon image, e.g.:
+                  <img src="./public/gross-sales-icon.svg" width="33" alt="Gross Sales"/>
+                  Fallback Bootstrap Icon shown below:
+                -->
+                <i class="bi bi-cash-stack"></i>
+              </div>
+              <div class="stat-info">
+                <span class="stat-label">Gross Sales</span>
+                <span class="stat-value blue">₱<?= number_format((float)getStat('total_revenue'), 0) ?></span>
+              </div>
+            </div>
+
+            <!-- Total Items Sold -->
+            <div class="stat-card cream-bg">
+              <div class="stat-icon icon-yellow">
+                
+                  <img src="pics_icons/bags-shopping.png" width="33" alt="Items Sold"/>
+                  
+              </div>
+              <div class="stat-info">
+                <span class="stat-label">Total Items Sold</span>
+                <span class="stat-value gray"><?= (int)getStat('total_units_sold') ?> Products</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="cards-row">
+            <!-- Profit -->
+            <div class="stat-card green-bg">
+              <div class="stat-icon icon-green">
+                
+                  <img src="pics_icons/usd-circle.png" width="33" alt="Profit"/>
+                 
+              </div>
+              <div class="stat-info">
+                <span class="stat-label">Profit</span>
+                <span class="stat-value green">₱<?= number_format($profit, 0) ?></span>
+              </div>
+            </div>
+
+            <!-- Today's Sales -->
+            <div class="stat-card cream-bg">
+              <div class="stat-icon icon-yellow">
+                
+                  <img src="pics_icons/growth-chart-invest.png" width="33" alt="Today's Sales"/>
+                  
+              </div>
+              <div class="stat-info">
+                <span class="stat-label">Today's Sales</span>
+                <span class="stat-value gray">₱<?= number_format((float)($todayRow['todays_revenue'] ?? 0), 0) ?></span>
+              </div>
+            </div>
+          </div>
+
+        </div>
+      </div><!-- /Sales Overview -->
+
+    </div><!-- /overview-row -->
+
+    <!-- ── MIDDLE ROW: Inventory Status + Monthly Sales ── -->
+    <div class="middle-row">
+
+      <!-- Inventory Status -->
+      <div class="chart-card">
+        <div class="chart-header">
+          <div class="chart-icon-wrap">
+            <div class="chart-icon-bg yellow"></div>
+            <span class="chart-icon" style="color: var(--1-brown);">
+             
+                <img src="pics_icons/inbox-full.png" width="22" height="22" alt="Inventory"/>
+              
+            </span>
+          </div>
+          <div class="chart-title-block">
+            <span class="chart-title">Inventory Status</span>
+            <span class="chart-subtitle">Information about stock levels</span>
+          </div>
+        </div>
+
+        <div class="progress-list">
+          <!-- Low stock -->
+          <div class="progress-item">
+            <span class="progress-label">Low stock</span>
+            <div class="progress-track">
+              <div class="progress-fill fill-yellow" style="width: <?= $lowStockPct ?>%;"></div>
+            </div>
+            <span class="progress-pct"><?= $lowStockPct ?>%</span>
+          </div>
+
+          <!-- Out of Stock -->
+          <div class="progress-item">
+            <span class="progress-label">Out of Stock</span>
+            <div class="progress-track">
+              <div class="progress-fill fill-red" style="width: <?= $outStockPct ?>%;"></div>
+            </div>
+            <span class="progress-pct"><?= $outStockPct ?>%</span>
+          </div>
+
+          <!-- Near Expiry -->
+          <div class="progress-item">
+            <span class="progress-label">Near Expiry</span>
+            <div class="progress-track">
+              <div class="progress-fill fill-orange" style="width: <?= $nearExpiryPct ?>%;"></div>
+            </div>
+            <span class="progress-pct"><?= $nearExpiryPct ?>%</span>
+          </div>
+
+          <!-- Expired -->
+          <div class="progress-item">
+            <span class="progress-label">Expired</span>
+            <div class="progress-track">
+              <div class="progress-fill fill-red" style="width: <?= $expiredPct ?>%;"></div>
+            </div>
+            <span class="progress-pct"><?= $expiredPct ?>%</span>
+          </div>
+        </div>
+      </div><!-- /Inventory Status -->
+
+      <!-- Monthly Sales -->
+      <div class="chart-card">
+        <div class="chart-header">
+          <div class="chart-icon-wrap">
+            <div class="chart-icon-bg blue"></div>
+            <span class="chart-icon" style="color: #fff;">
+              
+                <img src="pics_icons/calendar.png" width="22" height="22" alt="Monthly Sales"/>
+                
+            </span>
+          </div>
+          <div class="chart-title-block">
+            <span class="chart-title">Monthly Sales</span>
+          </div>
+        </div>
+
+        <?php
+          // Prepare chart data
+          $labels  = [];
+          $amounts = [];
+          foreach ($monthlyData as $row) {
+              $labels[]  = htmlspecialchars($row['month_label']);
+              $amounts[] = (float)$row['monthly_total'];
+          }
+          $ptCount = count($amounts);
+          $yTicks  = [40000, 30000, 20000, 10000, 0];
+          $maxY    = max($yTicks);   // fixed scale top = 40 000
+          $chartH  = 180;            // px height of plot area
+        ?>
+
+        <div class="sales-chart-area">
+          <div class="chart-graph">
+
+            <!-- Y-axis labels -->
+            <div class="y-axis">
+              <?php foreach ($yTicks as $t): ?>
+                <span>₱<?= number_format($t / 1000, 0) ?>k</span>
+              <?php endforeach; ?>
+            </div>
+
+            <!-- Plot area -->
+            <div class="chart-plot">
+              <!-- Grid lines (5 lines matching 5 Y-ticks) -->
+              <div class="grid-lines">
+                <?php for ($i = 0; $i < 5; $i++): ?>
+                  <div class="grid-line"></div>
+                <?php endfor; ?>
+              </div>
+
+              <!-- SVG line chart overlay -->
+              <?php if ($ptCount >= 2): ?>
+              <svg class="chart-svg" viewBox="0 0 400 <?= $chartH ?>" preserveAspectRatio="none" xmlns="http://www.w3.org/2000/svg">
+                <defs>
+                  <linearGradient id="lineGrad" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stop-color="rgba(37,131,194,0.25)"/>
+                    <stop offset="100%" stop-color="rgba(37,131,194,0)"/>
+                  </linearGradient>
+                </defs>
+                <?php
+                  $pts = [];
+                  for ($i = 0; $i < $ptCount; $i++) {
+                      $x     = ($i / ($ptCount - 1)) * 400;
+                      $y     = $chartH - ($amounts[$i] / $maxY) * $chartH;
+                      $pts[] = [$x, $y];
+                  }
+                  $polyline = implode(' ', array_map(fn($p) => "{$p[0]},{$p[1]}", $pts));
+                  $areaPath = "M {$pts[0][0]},{$chartH} "
+                            . implode(' ', array_map(fn($p) => "L {$p[0]},{$p[1]}", $pts))
+                            . " L {$pts[$ptCount-1][0]},{$chartH} Z";
+                ?>
+                <path d="<?= $areaPath ?>" fill="url(#lineGrad)"/>
+                <polyline points="<?= $polyline ?>" fill="none" stroke="#2583c2" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>
+                <?php foreach ($pts as $p): ?>
+                  <circle cx="<?= $p[0] ?>" cy="<?= $p[1] ?>" r="5" fill="#fff" stroke="#2583c2" stroke-width="2.5"/>
+                <?php endforeach; ?>
+              </svg>
+
+              <?php elseif ($ptCount === 1): ?>
+              <svg class="chart-svg" viewBox="0 0 400 <?= $chartH ?>" xmlns="http://www.w3.org/2000/svg">
+                <?php $y = $chartH - ($amounts[0] / $maxY) * $chartH; ?>
+                <circle cx="200" cy="<?= $y ?>" r="5" fill="#fff" stroke="#2583c2" stroke-width="2.5"/>
+              </svg>
+              <?php endif; ?>
+
+            </div><!-- /chart-plot -->
+          </div><!-- /chart-graph -->
+
+          <!-- X-axis labels -->
+          <div class="x-labels">
+            <?php if (!empty($labels)): ?>
+              <?php foreach ($labels as $lbl): ?>
+                <span><?= $lbl ?></span>
+              <?php endforeach; ?>
+            <?php else: ?>
+              <span style="color: var(--color-gray-200); font-style: italic;">No data yet</span>
+            <?php endif; ?>
+          </div>
+        </div><!-- /sales-chart-area -->
+      </div><!-- /Monthly Sales -->
+
+    </div><!-- /middle-row -->
+
+    <!-- ── CUSTOMERS CREDIT ── -->
+    <div class="section-container">
+      <h2 class="section-title">Customers Credit</h2>
+      <div class="customer-cards-row">
+
+        <!-- Total Customers -->
+        <div class="cust-card cream-bg">
+          <div class="cust-header">
+            <div class="cust-icon-wrap">
+              <div class="cust-icon-bg" style="background-color: rgba(62,44,35,0.8);"></div>
+              <span class="cust-icon">
+                <!--
+                  NOTE: Replace with your customers icon image, e.g.:
+                  <img src="./public/Vector1.svg" width="22" height="22" alt="Customers"/>
+                  Fallback Bootstrap Icon shown below:
+                -->
+                <i class="bi bi-people-fill"></i>
+              </span>
+            </div>
+            <span class="cust-label">Total Customers</span>
+          </div>
+          <div class="cust-value-wrap">
+            <p class="cust-value"><?= (int)($custRow['total_customers'] ?? 0) ?> customers</p>
+          </div>
+        </div>
+
+        <!-- Unsettled Accounts -->
+        <div class="cust-card red-bg">
+          <div class="cust-header">
+            <div class="cust-icon-wrap">
+              <div class="cust-icon-bg" style="background-color: var(--color-tomato);"></div>
+              <span class="cust-icon">
+                <!--
+                  NOTE: Replace with your unsettled accounts icon image, e.g.:
+                  <img src="./public/Group.svg" width="22" height="22" alt="Unsettled"/>
+                  Fallback Bootstrap Icon shown below:
+                -->
+                <i class="bi bi-clock-history"></i>
+              </span>
+            </div>
+            <span class="cust-label">Unsettled Accounts</span>
+          </div>
+          <div class="cust-value-wrap">
+            <p class="cust-value red"><?= (int)($custRow['unsettled_count'] ?? 0) ?> Customers</p>
+          </div>
+        </div>
+
+        <!-- Total Amount on Credit -->
+        <div class="cust-card cream-bg">
+          <div class="cust-header">
+            <div class="cust-icon-wrap">
+              <div class="cust-icon-bg" style="background-color: rgba(62,44,35,0.8);"></div>
+              <span class="cust-icon">
+                <!--
+                  NOTE: Replace with your credit card icon image, e.g.:
+                  <img src="./public/Vector2.svg" width="22" height="22" alt="Credit"/>
+                  Fallback Bootstrap Icon shown below:
+                -->
+                <i class="bi bi-credit-card-fill"></i>
+              </span>
+            </div>
+            <span class="cust-label">Total Amount on Credit</span>
+          </div>
+          <div class="cust-value-wrap">
+            <p class="cust-value">₱<?= number_format((float)($custRow['total_credit'] ?? 0), 0) ?></p>
+          </div>
+        </div>
+
       </div>
-      <div class="user-avatar"></div>
-    </div>
-  </div>
+    </div><!-- /Customers Credit -->
 
-  <div class="section-title">Products Overview</div>
-  <div class="cards-grid">
-    <div class="stat-card"><div class="label">Out of Stock</div>
-      <div class="value"><?= (int)getStat('out_of_stock_count') ?> Products</div></div>
-    <div class="stat-card"><div class="label">Expired Products</div>
-      <div class="value"><?= (int)getStat('expired_count') ?> Products</div></div>
-    <div class="stat-card"><div class="label">Low Stock Products</div>
-      <div class="value"><?= (int)getStat('low_stock_count') ?> Products</div></div>
-    <div class="stat-card"><div class="label">Near Expiration</div>
-      <div class="value"><?= (int)getStat('near_expiry_count') ?> Products</div></div>
-  </div>
+  </div><!-- /main-body -->
+</div><!-- /page-wrapper -->
 
-  <div class="section-title">Sales Overview</div>
-  <div class="sales-grid">
-    <div class="stat-card"><div class="label">Total Sales</div>
-      <div class="value"><?= (int)getStat('total_transactions') ?></div></div>
-    <div class="stat-card"><div class="label">Revenue</div>
-      <div class="value">₱<?= number_format((float)getStat('total_revenue'), 2) ?></div></div>
-    <div class="stat-card"><div class="label">Total Items Sold</div>
-      <div class="value"><?= (int)getStat('total_stock_units') ?></div></div>
-    <div class="stat-card"><div class="label">Today's Revenue</div>
-      <div class="value">₱<?= number_format((float)getStat('todays_revenue'), 2) ?></div></div>
-  </div>
-
-  <div class="charts-row">
-    <div class="chart-card">
-      <div class="chart-title">Monthly Revenue</div>
-      <?php if (!empty($monthlyData)): ?>
-        <table class="monthly-table">
-          <thead><tr><th>Month</th><th>Revenue</th></tr></thead>
-          <tbody>
-            <?php foreach ($monthlyData as $row): ?>
-              <tr>
-                <td><?= htmlspecialchars($row['month_label']) ?></td>
-                <td>₱<?= number_format((float)$row['monthly_total'], 2) ?></td>
-              </tr>
-            <?php endforeach; ?>
-          </tbody>
-        </table>
-      <?php else: ?>
-        <p style="color:#aaa;font-size:13px;">No sales data yet.</p>
-      <?php endif; ?>
-    </div>
-    <div class="chart-card">
-      <div class="chart-title">Inventory Status</div>
-      <p style="font-size:13px;color:#555;">Total Products: <strong><?= (int)getStat('total_products') ?></strong></p>
-      <p style="font-size:13px;color:#555;margin-top:8px;">Retail Value: <strong>₱<?= number_format((float)getStat('total_retail_value'),2) ?></strong></p>
-      <p style="font-size:13px;color:#555;margin-top:8px;">Cost Value: <strong>₱<?= number_format((float)getStat('total_cost_value'),2) ?></strong></p>
-    </div>
-  </div>
-</div>
 </body>
 </html>

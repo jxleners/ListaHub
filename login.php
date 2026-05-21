@@ -4,8 +4,10 @@
 //  Requirements met:
 //   ✅ PDO prepared statements
 //   ✅ password_verify()
-//   ✅ try-catch (no sensitive info exposed)
+//   ✅ try-catch
 //   ✅ Centralized lhdb.php
+//  NOTE: New schema uses User.password_hash (not .password)
+//        and store_name lives inside User (no stores table).
 // ============================================================
 
 error_reporting(E_ALL);
@@ -36,34 +38,34 @@ if (empty($login) || empty($password)) {
 try {
     $pdo = getPDO();
 
-    // Prepared Statement — joins users → stores in one query
+    // Prepared statement — column is password_hash in new schema
     $stmt = $pdo->prepare(
-        "SELECT u.id, u.username, u.email, u.password,
-                s.id AS store_id, s.store_name
-         FROM   users u
-         LEFT JOIN stores s ON s.user_id = u.id
-         WHERE  u.username = :username OR u.email = :email
+        "SELECT user_id, username, email, password_hash, store_name
+         FROM   User
+         WHERE  username = :username OR email = :email
          LIMIT  1"
     );
-    $stmt->execute([
-        ':username' => $login,
-        ':email'    => $login,
-    ]);
+    $stmt->execute([':username' => $login, ':email' => $login]);
     $user = $stmt->fetch();
 
     // password_verify() requirement
-    if (!$user || !password_verify($password, $user['password'])) {
+    if (!$user || !password_verify($password, $user['password_hash'])) {
         echo "<script>alert('Invalid username/email or password.'); window.location='index.php';</script>";
         exit;
     }
 
+    // Update last_login timestamp
+    $updStmt = $pdo->prepare(
+        "UPDATE User SET last_login = NOW() WHERE user_id = :user_id"
+    );
+    $updStmt->execute([':user_id' => $user['user_id']]);
+
     // Prevent session fixation
     session_regenerate_id(true);
 
-    $_SESSION['user_id']    = $user['id'];
+    $_SESSION['user_id']    = $user['user_id'];
     $_SESSION['username']   = $user['username'];
     $_SESSION['email']      = $user['email'];
-    $_SESSION['store_id']   = $user['store_id'];
     $_SESSION['store_name'] = $user['store_name'];
 
     header("Location: dashboard.php");

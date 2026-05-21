@@ -1,6 +1,10 @@
 <?php
+// ============================================================
+//  utils/lhdb.php  –  Centralized DB Connection (PDO)
+//  Requirement: Centralized db_config using PDO, try-catch
+// ============================================================
 define('DB_HOST',    'localhost');
-define('DB_NAME',    'listahub');
+define('DB_NAME',    'listahub_db');
 define('DB_USER',    'root');
 define('DB_PASS',    '');
 define('DB_CHARSET', 'utf8mb4');

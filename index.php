@@ -1,8 +1,5 @@
 <?php
-// ============================================================
-//  index.php  –  Login page
-//  If already logged in, redirect straight to dashboard
-// ============================================================
+// index.php - Login Page
 session_start();
 if (isset($_SESSION['user_id'])) {
     header("Location: dashboard.php");
@@ -14,97 +11,148 @@ if (isset($_SESSION['user_id'])) {
 <head>
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Login – ListaHub</title>
-  <link href="https://fonts.googleapis.com/css2?family=Sora:wght@400;600;700&display=swap" rel="stylesheet"/>
-  <style>
-    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-    :root {
-      --bg: #f4f5f7; --sidebar: #4a4a4a; --card: #5a5a5a;
-      --input-bg: #7a7a7a; --input-icon: #a0a0a0; --logo-box: #d0d0d0;
-      --btn-bg: #e8e8e8; --btn-text: #111; --link: #ccc;
-      --nav-pill: #6b6b6b; --nav-pill-text: #e0e0e0;
-    }
-    body { font-family: 'Sora', sans-serif; background: var(--bg); min-height: 100vh; display: flex; flex-direction: column; }
-    nav { background: #fff; border-bottom: 1px solid #ddd; padding: 0 32px; height: 72px; display: flex; align-items: center; justify-content: space-between; flex-shrink: 0; }
-    .nav-logo { background: var(--sidebar); color: #fff; font-weight: 700; font-size: 15px; padding: 10px 28px; border-radius: 50px; letter-spacing: .5px; }
-    .nav-actions { display: flex; gap: 12px; }
-    .nav-pill { background: var(--nav-pill); color: var(--nav-pill-text); font-size: 13px; font-weight: 600; padding: 8px 22px; border-radius: 50px; cursor: pointer; border: none; transition: background .2s; text-decoration: none; display: inline-block; }
-    .nav-pill:hover { background: #555; }
-    main { flex: 1; display: grid; grid-template-columns: 1fr 1fr; align-items: center; padding: 60px 80px; gap: 60px; }
-    .left-content { display: flex; flex-direction: column; gap: 24px; }
-    .hero-image { width: 100%; height: 130px; background: #c8c8c8; border-radius: 10px; }
-    .text-lines { display: flex; flex-direction: column; gap: 12px; }
-    .line { height: 18px; background: #d0d0d0; border-radius: 6px; }
-    .line:nth-child(4) { width: 60%; }
-    .login-card { background: var(--card); border-radius: 20px; padding: 36px 44px 40px; display: flex; flex-direction: column; gap: 20px; box-shadow: 0 8px 40px rgba(0,0,0,.18); }
-    .logo-box { background: var(--logo-box); border-radius: 14px; padding: 24px; text-align: center; }
-    .logo-box p { color: #555; font-size: 15px; margin-bottom: 4px; }
-    .logo-box h2 { color: #111; font-size: 26px; font-weight: 700; }
-    .field-group { display: flex; flex-direction: column; gap: 6px; }
-    .field-label { color: #e0e0e0; font-size: 13px; font-weight: 600; }
-    .input-wrap { background: var(--input-bg); border-radius: 50px; display: flex; align-items: center; padding: 4px 16px 4px 4px; gap: 10px; }
-    .input-icon { width: 40px; height: 40px; background: var(--input-icon); border-radius: 50%; flex-shrink: 0; }
-    .input-wrap input { background: transparent; border: none; outline: none; width: 100%; color: #fff; font-family: 'Sora', sans-serif; font-size: 14px; }
-    .input-wrap input::placeholder { color: #bbb; }
-    .btn-login { background: var(--btn-bg); color: var(--btn-text); border: none; border-radius: 50px; padding: 14px; font-family: 'Sora', sans-serif; font-size: 15px; font-weight: 700; cursor: pointer; width: 100%; transition: background .2s; }
-    .btn-login:hover { background: #d4d4d4; }
-    .card-link { text-align: center; }
-    .card-link a { color: var(--link); font-size: 12px; text-decoration: underline; cursor: pointer; }
-    @media (max-width: 900px) { main { grid-template-columns: 1fr; padding: 40px 24px; } .left-content { display: none; } }
-  </style>
+  <title>Log In – ListaHub</title>
+  <link rel="stylesheet" href="global_index.css"/>
+  <link rel="stylesheet" href="index.css"/>
+  <link
+    rel="stylesheet"
+    href="https://fonts.googleapis.com/css2?family=Inter:ital,wght@0,400;0,500;0,600;0,700;1,400;1,600;1,700&display=swap"
+  />
+  <link
+    rel="stylesheet"
+    href="https://fonts.googleapis.com/css2?family=Poppins:wght@900&display=swap"
+  />
 </head>
 <body>
-  <nav>
-    <div class="nav-logo">ListaHub</div>
-    <div class="nav-actions">
-      <a class="nav-pill" href="index.php">Log In</a>
-      <a class="nav-pill" href="signup.php">Sign Up</a>
-    </div>
-  </nav>
+  <div class="login-page">
+    <section class="body-login">
 
-  <main>
-    <div class="left-content">
-      <div class="hero-image"></div>
-      <div class="text-lines">
-        <div class="line"></div>
-        <div class="line"></div>
-        <div class="line"></div>
-        <div class="line"></div>
-      </div>
-    </div>
-
-    <div class="login-card">
-      <div class="logo-box">
-        <p>Welcome To</p>
-        <h2>ListaHub</h2>
-      </div>
-
-      <form method="POST" action="login.php" style="display:flex; flex-direction:column; gap:20px;">
-
-        <div class="field-group">
-          <label class="field-label">Email/Username</label>
-          <div class="input-wrap">
-            <div class="input-icon"></div>
-            <input type="text" name="login" placeholder="Enter email or username" required/>
+      <!-- ── NAVBAR ── -->
+      <nav class="nav">
+        <div class="logo">
+          <div class="logos">
+            <!-- INSERT: Nav logo image URL below (dark logo on light background) -->
+            <img
+              class="listahub-logo-3-1"
+              loading="lazy"
+              alt="ListaHub Logo"
+              src="pics_icons/ListaHub-logo-3-1@2x.png"
+            />
           </div>
         </div>
-
-        <div class="field-group">
-          <label class="field-label">Password</label>
-          <div class="input-wrap">
-            <div class="input-icon"></div>
-            <input type="password" name="password" placeholder="Enter password" required/>
-          </div>
+        <div class="menu">
+          <!-- Log in button — stays on this page (active state) -->
+          <a class="menus" href="index.php">
+            <div class="log-in">Log in</div>
+          </a>
+          <!-- Sign up button — goes to signup.php -->
+          <a class="menus2" href="signup.php">
+            <div class="sign-up">Sign up</div>
+          </a>
         </div>
+      </nav>
 
-        <button type="submit" class="btn-login">Log In</button>
+      <!-- ── MAIN CONTENT ── -->
+      <main class="context-parent">
 
-        <div class="card-link">
-          <a href="signup.php">Don't have an account? Sign up</a>
-        </div>
+        <!-- Left placeholder (brand text positioned absolutely) -->
+        <div class="context"></div>
 
-      </form>
-    </div>
-  </main>
+        <!-- ── AUTH CARD ── -->
+        <section class="sign-up-card">
+          <form class="logos-parent" method="POST" action="login.php">
+
+            <!-- Card logo -->
+            <div class="logos2">
+              <!-- INSERT: Card logo image URL below (logo for the card, e.g. yellow/cream version) -->
+              <img
+                class="listahub-logo-1"
+                loading="lazy"
+                alt="ListaHub"
+                src="pics_icons/ListaHub-Logo-1@2x.png"
+              />
+            </div>
+
+            <!-- Email / Username field -->
+            <div class="emailiiactive">
+              <div class="stateactive">
+                <label class="label" for="login">Email or username</label>
+                <div class="input-field">
+                  <!-- INSERT: User/person icon SVG or image URL below -->
+                  <img class="vector-icon" alt="user icon" src="pics_icons/Vector.svg"/>
+                  <input
+                    class="placeholder"
+                    id="login"
+                    name="login"
+                    placeholder="listahub@gmail.com"
+                    type="text"
+                    required
+                  />
+                </div>
+              </div>
+            </div>
+
+            <!-- Password field -->
+            <div class="emailiiactive">
+              <div class="stateactive">
+                <label class="label" for="password">Password</label>
+                <div class="input-field">
+                  <!-- INSERT: Lock/password icon SVG or image URL below -->
+                  <img class="vector-icon2" alt="lock icon" src="pics_icons/Vector1.svg"/>
+                  <input
+                    class="placeholder2"
+                    id="password"
+                    name="password"
+                    placeholder="enter your password"
+                    type="password"
+                    required
+                  />
+                </div>
+              </div>
+            </div>
+
+            <!-- Terms, button, footer -->
+            <div class="section">
+              <div class="text">
+                <label>
+                  <input type="checkbox" name="terms" required style="margin-right:5px;accent-color:#ebd665;"/>
+                  <span class="i-agree-to">I agree to ListaHub's </span>
+                  <b class="i-agree-to"><a href="#" style="color:inherit;text-decoration:none;">Terms of Service &amp; Privacy Policy.</a></b>
+                </label>
+              </div>
+
+              <!-- Log in — submits form; login.php should redirect to dashboard.php on success -->
+              <button class="buttons" type="submit">
+                <div class="text2">Log in</div>
+              </button>
+
+              <div class="text3">
+                <span class="dont-have-an">Don't have an account? </span>
+                <!-- Sign up link — goes to signup.php -->
+                <a class="register" href="signup.php">Register</a>
+              </div>
+            </div>
+
+          </form>
+        </section>
+      </main>
+
+      <!-- Brand title (positioned absolutely over background) -->
+      <h1 class="listahub">ListaHub</h1>
+
+      <!-- Brand description (positioned absolutely) -->
+      <div class="listahub-is-a">
+        ListaHub is a database-driven Point-of-Sale (POS) and Inventory
+        Management System developed to provide an efficient, organized, and
+        automated solution for managing the daily operations of small
+        businesses, particularly sari-sari stores and mini groceries. It
+        includes secure user authentication, product and category management,
+        inventory and stock monitoring, stock-in and stock-out recording,
+        sales and transaction processing, customer debt management, and csv
+        import and export.
+      </div>
+
+    </section>
+  </div>
 </body>
 </html>

@@ -2,7 +2,9 @@
 // ============================================================
 //  restock.php
 //  Requirements: Prepared statements, try-catch, session guard
-//  Uses INDEX on product_name/sku for search performance
+//  NOTE: New schema — Restock_Transaction + Restock_Item tables,
+//        Product.quantity (not stock_quantity), user_id filter
+//        Trigger trg_restock_item_add_stock auto-updates stock.
 // ============================================================
 session_start();
 if (!isset($_SESSION['user_id'])) {
@@ -12,42 +14,49 @@ if (!isset($_SESSION['user_id'])) {
 
 require_once './utils/lhdb.php';
 
-$store_id = (int) $_SESSION['store_id'];
-$message  = '';
-$error    = '';
+$user_id = (int) $_SESSION['user_id'];
+$message = '';
+$error   = '';
 
 // ── Handle restock POST ──────────────────────────────────────
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    $product_id    = (int)   ($_POST['product_id']    ?? 0);
-    $qty_added     = (int)   ($_POST['qty_added']     ?? 0);
-    $notes         = trim($_POST['notes'] ?? '');
+    $product_id  = (int)   ($_POST['product_id']  ?? 0);
+    $qty_added   = (int)   ($_POST['qty_added']   ?? 0);
+    $cost_at_rest = (float) ($_POST['cost_price']  ?? 0);
 
     if ($product_id > 0 && $qty_added > 0) {
         try {
             $pdo = getPDO();
             $pdo->beginTransaction();
 
-            // Update stock (Prepared Statement)
-            $updStmt = $pdo->prepare(
-                "UPDATE products
-                 SET stock_quantity = stock_quantity + :qty
-                 WHERE id = :id AND store_id = :store_id"
+            // Create a restock transaction header
+            $txStmt = $pdo->prepare(
+                "INSERT INTO Restock_Transaction (restock_date, total_cost)
+                 VALUES (NOW(), :total_cost)"
             );
-            $updStmt->execute([
-                ':qty'      => $qty_added,
-                ':id'       => $product_id,
-                ':store_id' => $store_id,
-            ]);
+            $txStmt->execute([':total_cost' => $cost_at_rest * $qty_added]);
+            $restock_id = (int) $pdo->lastInsertId();
 
-            // Log the restock
-            $logStmt = $pdo->prepare(
-                "INSERT INTO restock_log (product_id, quantity_added, restock_date, notes)
-                 VALUES (:product_id, :qty, NOW(), :notes)"
+            // Get current cost_price if not provided
+            if ($cost_at_rest <= 0) {
+                $priceStmt = $pdo->prepare(
+                    "SELECT cost_price FROM Product WHERE product_id = :id AND user_id = :uid"
+                );
+                $priceStmt->execute([':id' => $product_id, ':uid' => $user_id]);
+                $pRow = $priceStmt->fetch();
+                $cost_at_rest = (float)($pRow['cost_price'] ?? 0);
+            }
+
+            // Insert restock item — trigger trg_restock_item_add_stock fires automatically
+            $itemStmt = $pdo->prepare(
+                "INSERT INTO Restock_Item (restock_id, product_id, quantity_added, cost_price_at_restock)
+                 VALUES (:restock_id, :product_id, :qty, :cost)"
             );
-            $logStmt->execute([
+            $itemStmt->execute([
+                ':restock_id' => $restock_id,
                 ':product_id' => $product_id,
                 ':qty'        => $qty_added,
-                ':notes'      => $notes,
+                ':cost'       => $cost_at_rest,
             ]);
 
             $pdo->commit();
@@ -70,22 +79,22 @@ $search = trim($_GET['search'] ?? '');
 try {
     $pdo = getPDO();
 
-    // Uses INDEX idx_products_name and idx_products_sku
-    $sql = "SELECT p.id, p.product_name, p.sku, p.stock_quantity,
-                   p.cost_price, p.selling_price, p.expiry_date,
+    $sql = "SELECT p.product_id, p.product_name, p.sku, p.quantity,
+                   p.cost_price, p.retail_price, p.expiration_date,
+                   p.status, p.low_stock_threshold,
                    COALESCE(c.category_name, 'Uncategorized') AS category_name,
-                   COALESCE(SUM(r.quantity_added), 0) AS total_restocked
-            FROM products p
-            LEFT JOIN categories c ON c.id = p.category_id
-            LEFT JOIN restock_log r ON r.product_id = p.id
-            WHERE p.store_id = :store_id";
+                   COALESCE(SUM(ri.quantity_added), 0) AS total_restocked
+            FROM Product p
+            LEFT JOIN Category c ON c.category_id = p.category_id
+            LEFT JOIN Restock_Item ri ON ri.product_id = p.product_id
+            WHERE p.user_id = :user_id";
 
-    $params = [':store_id' => $store_id];
+    $params = [':user_id' => $user_id];
 
     if ($tab === 'low') {
-        $sql .= " AND p.stock_quantity > 0 AND p.stock_quantity <= 5";
+        $sql .= " AND p.status = 'Low Stock'";
     } elseif ($tab === 'out') {
-        $sql .= " AND p.stock_quantity = 0";
+        $sql .= " AND p.status = 'Out of Stock'";
     }
 
     if (!empty($search)) {
@@ -94,7 +103,7 @@ try {
         $params[':search2'] = '%' . $search . '%';
     }
 
-    $sql .= " GROUP BY p.id ORDER BY p.product_name ASC";
+    $sql .= " GROUP BY p.product_id ORDER BY p.product_name ASC";
 
     $stmt = $pdo->prepare($sql);
     $stmt->execute($params);
@@ -104,11 +113,11 @@ try {
     $countStmt = $pdo->prepare(
         "SELECT
             COUNT(*) AS total,
-            SUM(CASE WHEN stock_quantity > 0 AND stock_quantity <= 5 THEN 1 ELSE 0 END) AS low,
-            SUM(CASE WHEN stock_quantity = 0 THEN 1 ELSE 0 END) AS out_of_stock
-         FROM products WHERE store_id = :store_id"
+            SUM(CASE WHEN status = 'Low Stock'    THEN 1 ELSE 0 END) AS low,
+            SUM(CASE WHEN status = 'Out of Stock' THEN 1 ELSE 0 END) AS out_of_stock
+         FROM Product WHERE user_id = :user_id"
     );
-    $countStmt->execute([':store_id' => $store_id]);
+    $countStmt->execute([':user_id' => $user_id]);
     $counts = $countStmt->fetch();
 
 } catch (PDOException $e) {
@@ -126,7 +135,7 @@ try {
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
   <link href="https://fonts.googleapis.com/css2?family=Sora:wght@400;600;700;800&display=swap" rel="stylesheet"/>
   <style>
-    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    *, *::before, *::after { box-sizing:border-box; margin:0; padding:0; }
     :root { --sidebar-bg:#4a4a4a; --sidebar-width:240px; --main-bg:#f4f5f7; --nav-item:#6b6b6b; --nav-text:#ddd; --nav-active:#e8e8e8; }
     body { font-family:'Sora',sans-serif; display:flex; min-height:100vh; background:var(--main-bg); }
     aside { width:var(--sidebar-width); background:var(--sidebar-bg); display:flex; flex-direction:column; padding:20px 16px; gap:8px; position:fixed; top:0; left:0; bottom:0; border-radius:0 16px 16px 0; z-index:10; }
@@ -165,9 +174,9 @@ try {
     .restock-qty { width:70px; background:#c8c8c8; border:none; border-radius:8px; padding:7px 10px; font-family:'Sora',sans-serif; font-size:13px; text-align:center; }
     .btn-restock { background:#4a4a4a; color:#fff; border:none; border-radius:8px; padding:7px 14px; font-family:'Sora',sans-serif; font-size:12px; font-weight:600; cursor:pointer; white-space:nowrap; }
     .btn-restock:hover { background:#333; }
-    .status-low { color:#b45309; font-weight:600; }
-    .status-out { color:#b91c1c; font-weight:600; }
-    .status-in  { color:#15803d; font-weight:600; }
+    .status-low  { color:#b45309; font-weight:600; }
+    .status-out  { color:#b91c1c; font-weight:600; }
+    .status-in   { color:#15803d; font-weight:600; }
     .empty-state { text-align:center; color:#aaa; padding:40px 0; font-size:14px; }
   </style>
 </head>
@@ -218,13 +227,13 @@ try {
         <button type="submit" class="search-btn">Go</button>
       </form>
       <div class="filter-tabs">
-        <a class="tab <?= $tab === 'all' ? 'active' : '' ?>" href="restock.php?tab=all<?= !empty($search) ? '&search='.urlencode($search) : '' ?>">
+        <a class="tab <?= $tab==='all'?'active':'' ?>" href="restock.php?tab=all<?= !empty($search)?'&search='.urlencode($search):'' ?>">
           All Products (<?= (int)$counts['total'] ?>)
         </a>
-        <a class="tab <?= $tab === 'low' ? 'active' : '' ?>" href="restock.php?tab=low<?= !empty($search) ? '&search='.urlencode($search) : '' ?>">
+        <a class="tab <?= $tab==='low'?'active':'' ?>" href="restock.php?tab=low<?= !empty($search)?'&search='.urlencode($search):'' ?>">
           <i class="bi bi-exclamation-triangle"></i> Low Stock (<?= (int)$counts['low'] ?>)
         </a>
-        <a class="tab <?= $tab === 'out' ? 'active' : '' ?>" href="restock.php?tab=out<?= !empty($search) ? '&search='.urlencode($search) : '' ?>">
+        <a class="tab <?= $tab==='out'?'active':'' ?>" href="restock.php?tab=out<?= !empty($search)?'&search='.urlencode($search):'' ?>">
           <i class="bi bi-exclamation-triangle-fill"></i> Out of Stock (<?= (int)$counts['out_of_stock'] ?>)
         </a>
       </div>
@@ -234,7 +243,7 @@ try {
       <thead>
         <tr>
           <th>Product Name</th><th>SKU</th><th>Category</th>
-          <th>Current Stock</th><th>Status</th><th>Add Qty</th><th>Action</th>
+          <th>Current Stock</th><th>Status</th><th>Add Qty</th><th>Total Restocked</th>
         </tr>
       </thead>
       <tbody>
@@ -242,25 +251,27 @@ try {
           <tr><td colspan="7" class="empty-state">No products found.</td></tr>
         <?php else: ?>
           <?php foreach ($products as $p):
-            if ($p['stock_quantity'] == 0) { $sClass = 'status-out'; $sLabel = 'Out of Stock'; }
-            elseif ($p['stock_quantity'] <= 5) { $sClass = 'status-low'; $sLabel = 'Low Stock'; }
-            else { $sClass = 'status-in'; $sLabel = 'In Stock'; }
+            $sClass = match($p['status']) {
+                'Out of Stock' => 'status-out',
+                'Low Stock'    => 'status-low',
+                default        => 'status-in',
+            };
           ?>
           <tr>
             <td><?= htmlspecialchars($p['product_name']) ?></td>
             <td><?= htmlspecialchars($p['sku']) ?></td>
             <td><?= htmlspecialchars($p['category_name']) ?></td>
-            <td><?= (int)$p['stock_quantity'] ?> pcs</td>
-            <td><span class="<?= $sClass ?>"><?= $sLabel ?></span></td>
+            <td><?= (int)$p['quantity'] ?> pcs</td>
+            <td><span class="<?= $sClass ?>"><?= htmlspecialchars($p['status']) ?></span></td>
             <td>
               <form method="post" style="display:flex;align-items:center;gap:8px;">
-                <input type="hidden" name="product_id" value="<?= (int)$p['id'] ?>"/>
+                <input type="hidden" name="product_id" value="<?= (int)$p['product_id'] ?>"/>
+                <input type="hidden" name="cost_price"  value="<?= (float)$p['cost_price'] ?>"/>
                 <input class="restock-qty" type="number" name="qty_added" min="1" value="1" required/>
-                <input type="hidden" name="notes" value="Manual restock"/>
                 <button type="submit" class="btn-restock">Restock</button>
               </form>
             </td>
-            <td>Total restocked: <?= (int)$p['total_restocked'] ?></td>
+            <td><?= (int)$p['total_restocked'] ?> pcs</td>
           </tr>
           <?php endforeach; ?>
         <?php endif; ?>
