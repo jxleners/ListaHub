@@ -1,0 +1,63 @@
+/* ============================================================
+   global.css
+   Shared reset, CSS variables, and base styles.
+   ============================================================ */
+
+*, *::before, *::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  line-height: normal;
+  font-family: Inter, sans-serif;
+}
+
+:root {
+  /* ── Brand Colors ───────────────────────── */
+  --off-black:        #2b2b2b;
+  --off-white:        #e7e6e2;
+  --peach:            #ebb082;
+  --yellow:           #ebd665;
+  --text-brown:       #3e2c23;
+
+  /* ── Common Colors ──────────────────────── */
+  --color-black:      #000;
+  --color-burlywood:  #ebaf82;
+  --color-cornsilk:   rgba(253, 243, 219, 0.3);
+  --color-gray-100:   #212934;
+  --color-gray-200:   rgba(43, 43, 43, 0.4);
+  --color-gray-300:   rgba(0, 0, 0, 0.1);
+  --color-gray-400:   rgba(43, 43, 43, 0.8);
+  --color-gray-500:   rgba(255, 255, 255, 0.06);
+
+  /* ── Gap ────────────────────────────────── */
+  --gap-3_2:   3.2px;
+  --gap-10:    10px;
+  --gap-12_1:  12.1px;
+  --gap-20:    20px;
+
+  /* ── Padding ────────────────────────────── */
+  --padding-8:      8px;
+  --padding-8_1:    8.1px;
+  --padding-9_7:    9.7px;
+  --padding-10_1:   10.1px;
+  --padding-16_1:   16.1px;
+  --padding-20:     20px;
+
+  /* ── Border Radius ──────────────────────── */
+  --br-4:    4px;
+  --br-8_1:  8.1px;
+
+  /* ── Font Families ──────────────────────── */
+  --font-inter:    Inter, sans-serif;
+  --font-poppins:  Poppins, sans-serif;
+
+  /* ── Font Sizes ─────────────────────────── */
+  --fs-12_9:  12.9px;
+  --fs-14_5:  14.5px;
+
+  /* ── Borders ────────────────────────────── */
+  --border-1: 0.8px solid var(--color-gray-300);
+}

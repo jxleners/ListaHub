@@ -1,0 +1,111 @@
+/* global_sales.css */
+body {
+  margin: 0;
+  line-height: normal;
+}
+
+:root {
+  /* ── Spacing ── */
+  --Space-0:   0px;
+  --Space-050: 2px;
+
+  /* ── Brand / Accent Colors ── */
+  --Accents-Orange: #ff8d28;
+  --blue:           #2583c2;
+  --green:          #159459;
+  --yellow:         #ebd665;
+  --yellow-white:   #fdf3db;
+  --yellow-white-1: #fcf8ee;
+
+  /* ── UI Colors ── */
+  --color-black:     #000;
+  --color-cornsilk:  #fff5d9;
+  --color-gainsboro: #dfe5ee;
+  --color-gray-100:  #3e2c23;
+  --color-gray-200:  #2b2b2b;
+  --color-gray-300:  rgba(62, 44, 35, 0.85);
+  --color-gray-400:  rgba(62, 44, 35, 0.80);
+  --color-gray-500:  rgba(0, 0, 0, 0.01);
+  --color-lavender:  #e3ebff;
+  --color-linen:     #ffeee3;
+  --color-steelblue: rgba(37, 131, 194, 0.80);
+  --color-white:     #fff;
+  --green1:          rgba(216, 254, 213, 0.50);
+
+  /* ── Gap ── */
+  --gap-6:  6px;
+  --gap-7:  7px;
+  --gap-10: 10px;
+  --gap-15: 15px;
+  --gap-20: 20px;
+  --gap-22: 22px;
+
+  /* ── Padding ── */
+  --padding-0:  0px;
+  --padding-4:  4px;
+  --padding-5:  5px;
+  --padding-10: 10px;
+  --padding-13: 13px;
+  --padding-14: 14px;
+  --padding-15: 15px;
+  --padding-18: 18px;
+  --padding-19: 19px;
+  --padding-20: 20px;
+
+  /* ── Border Radius ── */
+  --br-5_5: 5.5px;
+  --br-10:  10px;
+  --br-15:  15px;
+  --br-20:  20px;
+
+  /* ── Font ── */
+  --font-inter: Inter, sans-serif;
+
+  /* ── Font Sizes ── */
+  --fs-13: 13px;
+  --fs-15: 15px;
+  --fs-16: 16px;
+  --fs-18: 18px;
+  --fs-19: 19px;
+  --fs-20: 20px;
+  --fs-24: 24px;
+
+  /* ── Borders ── */
+  --border-1: 1px solid var(--color-white);
+  --border-2: 1px dashed var(--color-gainsboro);
+
+  /* ── Shadows ── */
+  --shadow-drop:   1px 2px 20.6px rgba(62, 44, 35, 0.10);
+  --shadow-drop-1: 15px 22px 7px rgba(62,44,35,0),
+                   10px 14px 7px rgba(62,44,35,0.01),
+                    5px  8px 6px rgba(62,44,35,0.03),
+                    2px  4px 4px rgba(62,44,35,0.04),
+                    1px  1px 2px rgba(62,44,35,0.05),
+                    0px  0px 0px 3px var(--yellow-white);
+  --shadow-drop-2: 15px 22px 7px rgba(62,44,35,0),
+                   10px 14px 7px rgba(62,44,35,0.01),
+                    5px  8px 6px rgba(62,44,35,0.03),
+                    2px  4px 4px rgba(62,44,35,0.04),
+                    1px  1px 2px rgba(62,44,35,0.05);
+  --text-shadow-1: 0px 0px 10px rgba(43,43,43,0.35);
+
+  /* ── Gradients ── */
+  --gradient-1: linear-gradient(
+    146.01deg,
+    rgba(253,253,253,0.6),
+    rgba(254,246,227,0.6) 38.94%,
+    rgba(255,244,216,0.6)
+  );
+
+  /* ── Width / Heights ── */
+  --height-1:  1px;
+  --height-16: 16px;
+  --height-19: 19px;
+  --height-29: 29px;
+  --height-30: 30px;
+  --height-55: 55px;
+  --height-70: 70px;
+  --width-24:  24px;
+  --width-70:  70px;
+  --width-100: 100px;
+}
