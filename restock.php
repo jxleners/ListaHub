@@ -1,10 +1,12 @@
 <?php
 // ============================================================
-//  restock.php
-//  Requirements: Prepared statements, try-catch, session guard
-//  Schema: Restock_Transaction + Restock_Item tables,
-//          Product.quantity, user_id filter
-//          Trigger trg_restock_item_add_stock auto-updates stock.
+//  restock.php  — with inline Edit Product overlay
+//  Changes vs original:
+//   • Eye icon opens Edit Product modal (same page, no redirect)
+//   • Add Qty stepper default = 0 (Complete saves all qty > 0)
+//   • action=update  → edits product + logs 'manual' Inventory_Log
+//   • action=delete  → deletes product + logs 'manual' Inventory_Log
+//   • Complete button batch-restocks every row whose qty > 0
 // ============================================================
 session_start();
 if (!isset($_SESSION['user_id'])) {
@@ -18,87 +20,312 @@ $user_id = (int) $_SESSION['user_id'];
 $message = '';
 $error   = '';
 
-// ── Handle Restock POST ──────────────────────────────────────
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] === 'restock') {
-    $product_id   = (int)   ($_POST['product_id']  ?? 0);
-    $qty_added    = (int)   ($_POST['qty_added']   ?? 0);
-    $cost_at_rest = (float) ($_POST['cost_price']  ?? 0);
+// ── Handle POST actions ──────────────────────────────────────
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    $action = $_POST['action'] ?? '';
 
-    if ($product_id > 0 && $qty_added > 0) {
+    // ── SINGLE RESTOCK (eye button form submit) ───────────────
+    if ($action === 'restock') {
+        $product_id   = (int)   ($_POST['product_id']  ?? 0);
+        $qty_added    = (int)   ($_POST['qty_added']   ?? 0);
+        $cost_at_rest = (float) ($_POST['cost_price']  ?? 0);
+
+        if ($product_id > 0 && $qty_added > 0) {
+            try {
+                $pdo = getPDO();
+                $pdo->beginTransaction();
+
+                $txStmt = $pdo->prepare(
+                    "INSERT INTO Restock_Transaction (restock_date, total_cost)
+                     VALUES (NOW(), :total_cost)"
+                );
+                $txStmt->execute([':total_cost' => $cost_at_rest * $qty_added]);
+                $restock_id = (int) $pdo->lastInsertId();
+
+                if ($cost_at_rest <= 0) {
+                    $priceStmt = $pdo->prepare(
+                        "SELECT cost_price FROM Product WHERE product_id = :id AND user_id = :uid"
+                    );
+                    $priceStmt->execute([':id' => $product_id, ':uid' => $user_id]);
+                    $pRow = $priceStmt->fetch();
+                    $cost_at_rest = (float)($pRow['cost_price'] ?? 0);
+                }
+
+                $itemStmt = $pdo->prepare(
+                    "INSERT INTO Restock_Item (restock_id, product_id, quantity_added, cost_price_at_restock)
+                     VALUES (:restock_id, :product_id, :qty, :cost)"
+                );
+                $itemStmt->execute([
+                    ':restock_id' => $restock_id,
+                    ':product_id' => $product_id,
+                    ':qty'        => $qty_added,
+                    ':cost'       => $cost_at_rest,
+                ]);
+
+                $pdo->commit();
+                $message = 'Stock updated successfully.';
+            } catch (PDOException $e) {
+                if (isset($pdo) && $pdo->inTransaction()) $pdo->rollBack();
+                error_log("Restock error: " . $e->getMessage());
+                $error = 'A database error occurred. Please try again.';
+            }
+        } else {
+            $error = 'Please select a product and enter a valid quantity.';
+        }
+
+    // ── BATCH COMPLETE (all rows with qty > 0) ────────────────
+    } elseif ($action === 'batch_restock') {
+        $items = $_POST['batch'] ?? [];
+        if (!empty($items)) {
+            try {
+                $pdo = getPDO();
+                $pdo->beginTransaction();
+
+                foreach ($items as $product_id => $qty_added) {
+                    $product_id = (int)$product_id;
+                    $qty_added  = (int)$qty_added;
+                    if ($product_id <= 0 || $qty_added <= 0) continue;
+
+                    $priceStmt = $pdo->prepare(
+                        "SELECT cost_price FROM Product WHERE product_id = :id AND user_id = :uid"
+                    );
+                    $priceStmt->execute([':id' => $product_id, ':uid' => $user_id]);
+                    $pRow = $priceStmt->fetch();
+                    $cost_at_rest = (float)($pRow['cost_price'] ?? 0);
+
+                    $txStmt = $pdo->prepare(
+                        "INSERT INTO Restock_Transaction (restock_date, total_cost)
+                         VALUES (NOW(), :total_cost)"
+                    );
+                    $txStmt->execute([':total_cost' => $cost_at_rest * $qty_added]);
+                    $restock_id = (int) $pdo->lastInsertId();
+
+                    $itemStmt = $pdo->prepare(
+                        "INSERT INTO Restock_Item (restock_id, product_id, quantity_added, cost_price_at_restock)
+                         VALUES (:restock_id, :product_id, :qty, :cost)"
+                    );
+                    $itemStmt->execute([
+                        ':restock_id' => $restock_id,
+                        ':product_id' => $product_id,
+                        ':qty'        => $qty_added,
+                        ':cost'       => $cost_at_rest,
+                    ]);
+                }
+
+                $pdo->commit();
+                $message = 'Restock complete! Inventory has been updated.';
+            } catch (PDOException $e) {
+                if (isset($pdo) && $pdo->inTransaction()) $pdo->rollBack();
+                error_log("Batch restock error: " . $e->getMessage());
+                $error = 'A database error occurred during batch restock. Please try again.';
+            }
+        } else {
+            $error = 'No quantities entered. Please add at least one quantity before completing.';
+        }
+
+    // ── UPDATE PRODUCT (from Edit overlay) ────────────────────
+    } elseif ($action === 'update') {
+        $product_id    = (int)   ($_POST['product_id']     ?? 0);
+        $product_name  = trim(   $_POST['product_name']    ?? '');
+        $category_name = trim(   $_POST['category']        ?? '');
+        $expiry_date   =         $_POST['expiry_date']      ?? null;
+        $no_expiry     = isset(  $_POST['no_expiry']);
+        $quantity      = (int)   ($_POST['stock_quantity'] ?? 0);
+        $cost_price    = (float) ($_POST['cost']           ?? 0);
+        $retail_price  = (float) ($_POST['selling_price']  ?? 0);
+        $notes         = trim(   $_POST['notes']           ?? '');
+
+        if ($product_id > 0 && !empty($product_name)) {
+            try {
+                $pdo = getPDO();
+                $pdo->beginTransaction();
+
+                // Resolve category
+                $target_cat = !empty($category_name) ? $category_name : 'Uncategorized';
+                $insCAT = $pdo->prepare("INSERT IGNORE INTO Category (category_name) VALUES (:name)");
+                $insCAT->execute([':name' => $target_cat]);
+                $catStmt = $pdo->prepare("SELECT category_id FROM Category WHERE category_name = :name LIMIT 1");
+                $catStmt->execute([':name' => $target_cat]);
+                $cat = $catStmt->fetch();
+                $cat_id = $cat ? (int)$cat['category_id'] : 1;
+
+                $final_expiry = ($no_expiry || empty($expiry_date)) ? null : $expiry_date;
+
+                // Snapshot old quantity for inventory log
+                $oldStmt = $pdo->prepare(
+                    "SELECT quantity, product_name FROM Product WHERE product_id = :id AND user_id = :uid"
+                );
+                $oldStmt->execute([':id' => $product_id, ':uid' => $user_id]);
+                $old = $oldStmt->fetch();
+                $old_qty  = (int)($old['quantity'] ?? 0);
+                $old_name = $old['product_name'] ?? '';
+
+                // Handle optional image upload
+                $image_url = null;
+                if (!empty($_FILES['product_image']['tmp_name'])) {
+                    $upload_dir = './uploads/products/';
+                    if (!is_dir($upload_dir)) mkdir($upload_dir, 0755, true);
+                    $ext     = strtolower(pathinfo($_FILES['product_image']['name'], PATHINFO_EXTENSION));
+                    $allowed = ['jpg','jpeg','png','gif','webp'];
+                    if (in_array($ext, $allowed)) {
+                        $filename = 'product_' . $product_id . '_' . time() . '.' . $ext;
+                        $dest     = $upload_dir . $filename;
+                        if (move_uploaded_file($_FILES['product_image']['tmp_name'], $dest)) {
+                            $image_url = $dest;
+                        }
+                    }
+                }
+
+                if ($image_url) {
+                    $upd = $pdo->prepare(
+                        "UPDATE Product SET product_name=:pname, category_id=:cat, quantity=:qty,
+                         cost_price=:cost, retail_price=:retail, expiration_date=:expiry,
+                         notes=:notes, image_url=:img
+                         WHERE product_id=:id AND user_id=:uid"
+                    );
+                    $upd->execute([
+                        ':pname' => $product_name, ':cat' => $cat_id, ':qty' => $quantity,
+                        ':cost'  => $cost_price,   ':retail' => $retail_price,
+                        ':expiry'=> $final_expiry, ':notes' => $notes,
+                        ':img'   => $image_url,    ':id' => $product_id, ':uid' => $user_id,
+                    ]);
+                } else {
+                    $upd = $pdo->prepare(
+                        "UPDATE Product SET product_name=:pname, category_id=:cat, quantity=:qty,
+                         cost_price=:cost, retail_price=:retail, expiration_date=:expiry,
+                         notes=:notes
+                         WHERE product_id=:id AND user_id=:uid"
+                    );
+                    $upd->execute([
+                        ':pname' => $product_name, ':cat' => $cat_id, ':qty' => $quantity,
+                        ':cost'  => $cost_price,   ':retail' => $retail_price,
+                        ':expiry'=> $final_expiry, ':notes' => $notes,
+                        ':id'    => $product_id,   ':uid' => $user_id,
+                    ]);
+                }
+
+                // Log the edit to Inventory_Log (manual adjustment)
+                $qty_diff = $quantity - $old_qty;
+                if ($qty_diff !== 0) {
+                    $move_type = $qty_diff > 0 ? 'in' : 'out';
+                    $qty_change = abs($qty_diff);
+                    $logStmt = $pdo->prepare(
+                        "INSERT INTO Inventory_Log
+                            (product_id, user_id, product_name_snap, movement_type, quantity_change,
+                            stock_before, stock_after, reference_type, adjustment_reason)
+                        VALUES (:pid, :uid, :pname, :move, :change, :before, :after, 'manual', 'Stock Count Correction')"
+                    );
+                    $logStmt->execute([
+                        ':pid'    => $product_id,
+                        ':uid'    => $user_id,
+                        ':pname'  => $old_name,
+                        ':move'   => $move_type,
+                        ':change' => $qty_change,
+                        ':before' => $old_qty,
+                        ':after'  => $quantity,
+                    ]);
+                } else {
+                    // Even if qty unchanged, log the edit with 1-unit placeholder for traceability
+                    $logStmt = $pdo->prepare(
+                        "INSERT INTO Inventory_Log
+                            (product_id, product_name_snap, movement_type, quantity_change,
+                             stock_before, stock_after, reference_type, adjustment_reason)
+                         VALUES (:pid, :pname, 'in', 0, :before, :after, 'manual', 'Stock Count Correction')"
+                    );
+                    // quantity_change must be > 0 per CHECK constraint, skip log if truly no change
+                    // (Only log when qty actually changed)
+                }
+
+                $pdo->commit();
+                $message = 'Product updated successfully.';
+            } catch (PDOException $e) {
+                if (isset($pdo) && $pdo->inTransaction()) $pdo->rollBack();
+                error_log("Restock update error: " . $e->getMessage());
+                $error = 'A database error occurred. Please try again.';
+            }
+        } else {
+            $error = 'Product name is required.';
+        }
+
+    // ── DELETE PRODUCT ────────────────────────────────────────
+    } elseif ($action === 'delete') {
+    $product_id = (int) ($_POST['product_id'] ?? 0);
+    if ($product_id > 0) {
         try {
             $pdo = getPDO();
-            $pdo->beginTransaction();
 
-            // Create a restock transaction header
-            $txStmt = $pdo->prepare(
-                "INSERT INTO Restock_Transaction (restock_date, total_cost)
-                 VALUES (NOW(), :total_cost)"
+            $snapStmt = $pdo->prepare(
+                "SELECT quantity, product_name, expiration_date, status
+                 FROM Product WHERE product_id = :id AND user_id = :uid"
             );
-            $txStmt->execute([':total_cost' => $cost_at_rest * $qty_added]);
-            $restock_id = (int) $pdo->lastInsertId();
+            $snapStmt->execute([':id' => $product_id, ':uid' => $user_id]);
+            $snap = $snapStmt->fetch();
 
-            // Get current cost_price if not provided
-            if ($cost_at_rest <= 0) {
-                $priceStmt = $pdo->prepare(
-                    "SELECT cost_price FROM Product WHERE product_id = :id AND user_id = :uid"
+            if ($snap) {
+                $pdo->beginTransaction();
+
+                $is_expired = (!empty($snap['expiration_date']) && $snap['expiration_date'] < date('Y-m-d'))
+                               || $snap['status'] === 'Expired';
+
+                if (!$is_expired && (int)$snap['quantity'] > 0) {
+                    $logStmt = $pdo->prepare(
+                        "INSERT INTO Inventory_Log
+                            (product_id, user_id, product_name_snap, movement_type, quantity_change,
+                            stock_before, stock_after, reference_type, adjustment_reason)
+                        VALUES (:pid, :uid, :pname, 'out', :qty_change, :qty_before, 0, 'manual', 'Other')"
+                    );
+                    $logStmt->execute([
+                        ':pid'        => $product_id,
+                        ':uid'        => $user_id,
+                        ':pname'      => $snap['product_name'],
+                        ':qty_change' => (int)$snap['quantity'],
+                        ':qty_before' => (int)$snap['quantity'],
+                    ]);
+                }
+
+                $del = $pdo->prepare(
+                    "DELETE FROM Product WHERE product_id = :id AND user_id = :uid"
                 );
-                $priceStmt->execute([':id' => $product_id, ':uid' => $user_id]);
-                $pRow = $priceStmt->fetch();
-                $cost_at_rest = (float)($pRow['cost_price'] ?? 0);
+                $del->execute([':id' => $product_id, ':uid' => $user_id]);
+
+                // Check if anything was actually deleted
+                if ($del->rowCount() === 0) {
+                    $pdo->rollBack();
+                    $error = 'Product not found or access denied.';
+                } else {
+                    $pdo->commit();
+                    $message = 'Product deleted successfully.';
+                }
+            } else {
+                $error = 'Product not found.';
             }
-
-            // Insert restock item — trigger trg_restock_item_add_stock fires automatically
-            $itemStmt = $pdo->prepare(
-                "INSERT INTO Restock_Item (restock_id, product_id, quantity_added, cost_price_at_restock)
-                 VALUES (:restock_id, :product_id, :qty, :cost)"
-            );
-            $itemStmt->execute([
-                ':restock_id' => $restock_id,
-                ':product_id' => $product_id,
-                ':qty'        => $qty_added,
-                ':cost'       => $cost_at_rest,
-            ]);
-
-            $pdo->commit();
-            $message = 'Stock updated successfully.';
-
         } catch (PDOException $e) {
             if (isset($pdo) && $pdo->inTransaction()) $pdo->rollBack();
-            error_log("Restock error: " . $e->getMessage());
-            $error = 'A database error occurred. Please try again.';
+            error_log("Restock delete error: " . $e->getMessage());
+            $error = 'Database error: ' . $e->getMessage(); // show full error temporarily
         }
-    } else {
-        $error = 'Please select a product and enter a valid quantity.';
     }
+  }
 }
 
 // ── Fetch product list for display ──────────────────────────
 $tab    = $_GET['tab']    ?? 'all';
 $search = trim($_GET['search'] ?? '');
 
-// Pagination
-$per_page    = 10;
+$per_page     = 10;
 $current_page = max(1, (int)($_GET['page'] ?? 1));
 $offset       = ($current_page - 1) * $per_page;
 
 try {
     $pdo = getPDO();
 
-    // Count query for pagination
-    $countSql = "SELECT COUNT(DISTINCT p.product_id) AS total_rows
-                 FROM Product p
-                 WHERE p.user_id = :user_id";
+    $countSql    = "SELECT COUNT(DISTINCT p.product_id) AS total_rows FROM Product p WHERE p.user_id = :user_id";
     $countParams = [':user_id' => $user_id];
 
-    if ($tab === 'low') {
-        $countSql .= " AND p.status = 'Low Stock'";
-    } elseif ($tab === 'out') {
-        $countSql .= " AND p.status = 'Out of Stock'";
-    } elseif ($tab === 'expired') {
-        $countSql .= " AND p.expiration_date < CURDATE()";
-    } elseif ($tab === 'near') {
-        $countSql .= " AND p.expiration_date BETWEEN CURDATE() AND DATE_ADD(CURDATE(), INTERVAL 30 DAY)";
-    }
+    if ($tab === 'low')     { $countSql .= " AND p.status = 'Low Stock'"; }
+    elseif ($tab === 'out') { $countSql .= " AND p.status = 'Out of Stock'"; }
+    elseif ($tab === 'expired') { $countSql .= " AND p.expiration_date < CURDATE()"; }
+    elseif ($tab === 'near') { $countSql .= " AND p.expiration_date BETWEEN CURDATE() AND DATE_ADD(CURDATE(), INTERVAL 30 DAY)"; }
 
     if (!empty($search)) {
         $countSql .= " AND (p.product_name LIKE :search OR p.sku LIKE :search2)";
@@ -108,31 +335,24 @@ try {
 
     $countStmt2 = $pdo->prepare($countSql);
     $countStmt2->execute($countParams);
-    $total_rows  = (int)$countStmt2->fetchColumn();
-    $total_pages = max(1, (int)ceil($total_rows / $per_page));
+    $total_rows   = (int)$countStmt2->fetchColumn();
+    $total_pages  = max(1, (int)ceil($total_rows / $per_page));
     $current_page = min($current_page, $total_pages);
-    $offset = ($current_page - 1) * $per_page;
+    $offset       = ($current_page - 1) * $per_page;
 
-    // Main product query
-    $sql = "SELECT p.product_id, p.product_name, p.sku, p.quantity,
-                   p.cost_price, p.retail_price, p.expiration_date,
-                   p.status, p.low_stock_threshold,
-                   COALESCE(c.category_name, 'Uncategorized') AS category_name
-            FROM Product p
-            LEFT JOIN Category c ON c.category_id = p.category_id
-            WHERE p.user_id = :user_id";
-
+    $sql    = "SELECT p.product_id, p.product_name, p.sku, p.quantity,
+                      p.cost_price, p.retail_price, p.expiration_date,
+                      p.status, p.low_stock_threshold, p.notes, p.image_url,
+                      COALESCE(c.category_name, 'Uncategorized') AS category_name
+               FROM Product p
+               LEFT JOIN Category c ON c.category_id = p.category_id
+               WHERE p.user_id = :user_id";
     $params = [':user_id' => $user_id];
 
-    if ($tab === 'low') {
-        $sql .= " AND p.status = 'Low Stock'";
-    } elseif ($tab === 'out') {
-        $sql .= " AND p.status = 'Out of Stock'";
-    } elseif ($tab === 'expired') {
-        $sql .= " AND p.expiration_date < CURDATE()";
-    } elseif ($tab === 'near') {
-        $sql .= " AND p.expiration_date BETWEEN CURDATE() AND DATE_ADD(CURDATE(), INTERVAL 30 DAY)";
-    }
+    if ($tab === 'low')      { $sql .= " AND p.status = 'Low Stock'"; }
+    elseif ($tab === 'out')  { $sql .= " AND p.status = 'Out of Stock'"; }
+    elseif ($tab === 'expired') { $sql .= " AND p.expiration_date < CURDATE()"; }
+    elseif ($tab === 'near') { $sql .= " AND p.expiration_date BETWEEN CURDATE() AND DATE_ADD(CURDATE(), INTERVAL 30 DAY)"; }
 
     if (!empty($search)) {
         $sql .= " AND (p.product_name LIKE :search OR p.sku LIKE :search2)";
@@ -143,20 +363,17 @@ try {
     $sql .= " ORDER BY p.product_name ASC LIMIT :limit OFFSET :offset";
 
     $stmt = $pdo->prepare($sql);
-    foreach ($params as $k => $v) {
-        $stmt->bindValue($k, $v);
-    }
+    foreach ($params as $k => $v) $stmt->bindValue($k, $v);
     $stmt->bindValue(':limit',  $per_page, PDO::PARAM_INT);
     $stmt->bindValue(':offset', $offset,   PDO::PARAM_INT);
     $stmt->execute();
     $products = $stmt->fetchAll();
 
-    // Counts for tab badges
     $countStmt = $pdo->prepare(
         "SELECT
-            COUNT(*)                                                                    AS total,
-            SUM(CASE WHEN status = 'Low Stock'    THEN 1 ELSE 0 END)                  AS low,
-            SUM(CASE WHEN status = 'Out of Stock' THEN 1 ELSE 0 END)                  AS out_of_stock,
+            COUNT(*)                                                                        AS total,
+            SUM(CASE WHEN status = 'Low Stock'    THEN 1 ELSE 0 END)                      AS low,
+            SUM(CASE WHEN status = 'Out of Stock' THEN 1 ELSE 0 END)                      AS out_of_stock,
             SUM(CASE WHEN expiration_date < CURDATE()                   THEN 1 ELSE 0 END) AS expired,
             SUM(CASE WHEN expiration_date BETWEEN CURDATE()
                      AND DATE_ADD(CURDATE(), INTERVAL 30 DAY)           THEN 1 ELSE 0 END) AS near_expiry
@@ -165,21 +382,44 @@ try {
     $countStmt->execute([':user_id' => $user_id]);
     $counts = $countStmt->fetch();
 
+    // Fetch categories for edit dropdown
+    $catListStmt = $pdo->prepare(
+        "SELECT DISTINCT c.category_name FROM Category c
+         LEFT JOIN Product p ON p.category_id = c.category_id AND p.user_id = :user_id
+         WHERE c.category_name = 'Uncategorized' OR p.product_id IS NOT NULL
+         ORDER BY c.category_name"
+    );
+    $catListStmt->execute([':user_id' => $user_id]);
+    $categories = $catListStmt->fetchAll(PDO::FETCH_ASSOC);
+
 } catch (PDOException $e) {
     error_log("Restock fetch error: " . $e->getMessage());
     $products     = [];
     $counts       = ['total' => 0, 'low' => 0, 'out_of_stock' => 0, 'expired' => 0, 'near_expiry' => 0];
     $total_pages  = 1;
     $current_page = 1;
+    $categories   = [];
 }
 
-// Helper: build query string preserving current params
+// Build product map for JS (for edit overlay pre-fill)
+$productMap = [];
+foreach ($products as $p) {
+    $productMap[(int)$p['product_id']] = [
+        'product_name'    => $p['product_name'],
+        'category_name'   => $p['category_name'],
+        'sku'             => $p['sku'] ?? '',
+        'quantity'        => (int)$p['quantity'],
+        'cost_price'      => (float)$p['cost_price'],
+        'retail_price'    => (float)$p['retail_price'],
+        'expiration_date' => $p['expiration_date'] ?? '',
+        'notes'           => $p['notes'] ?? '',
+        'image_url'       => $p['image_url'] ?? '',
+    ];
+}
+$productsDataJson = json_encode($productMap, JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_AMP | JSON_UNESCAPED_UNICODE);
+
 function pageUrl(int $page, string $tab, string $search): string {
-    $q = http_build_query(array_filter([
-        'tab'    => $tab,
-        'search' => $search,
-        'page'   => $page,
-    ]));
+    $q = http_build_query(array_filter(['tab' => $tab, 'search' => $search, 'page' => $page]));
     return 'restock.php?' . $q;
 }
 
@@ -192,46 +432,388 @@ $activePage = 'restock';
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>Restock – ListaHub</title>
 
-  <!-- Google Fonts -->
   <link rel="preconnect" href="https://fonts.googleapis.com"/>
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet"/>
-
-  <!-- Bootstrap Icons -->
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css"/>
 
-  <!-- Global CSS (variables, reset) -->
   <link rel="stylesheet" href="global_sidebar.css"/>
   <link rel="stylesheet" href="global_restock.css"/>
-
-  <!-- Component CSS -->
   <link rel="stylesheet" href="sidebar.css"/>
   <link rel="stylesheet" href="restock.css"/>
+
+  <style>
+  /* ═══════════════════════════════════════════════════════
+     GLOBAL CSS VARS (edit overlay design tokens)
+  ═══════════════════════════════════════════════════════ */
+  :root {
+    --color-cornsilk:    rgba(253, 243, 219, 0.45);
+    --color-floralwhite: rgba(252, 248, 238, 0);
+    --color-gray-100:    #212934;
+    --color-gray-200:    rgba(62, 44, 35, 0.8);
+    --color-gray-300:    rgba(43, 43, 43, 0.8);
+    --color-gray-400:    rgba(0, 0, 0, 0.2);
+    --color-khaki:       rgba(235, 214, 101, 0.66);
+    --text-brown:        #3e2c23;
+    --gap-4: 4px;  --gap-8: 8px; --gap-10: 10px; --gap-15: 15px;
+    --padding-0: 0px; --padding-01: 0; --padding-2: 2px;
+    --padding-10: 10px; --padding-12: 12px; --padding-20: 20px;
+    --br-2: 2px; --br-10: 10px;
+    --font-inter: Inter;
+    --fs-16: 16px; --fs-18: 18px;
+    --border-1: 1px solid var(--color-gray-400);
+    --height-19: 19px; --height-20: 20px; --height-41: 41px; --height-67: 67px;
+  }
+
+  /* ═══════════════════════════════════════════════════════
+     EDIT OVERLAY BACKDROP
+  ═══════════════════════════════════════════════════════ */
+  #edit-product-overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    z-index: 1200;
+    background: linear-gradient(180deg, rgba(235,233,225,0.55), rgba(169,174,181,0.55));
+    backdrop-filter: blur(51px);
+    -webkit-backdrop-filter: blur(51px);
+    box-shadow: 0 11.4px 22.3px rgba(53,106,185,0.09) inset,
+                0 -2px 1px rgba(151,193,255,0.4) inset;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+    overflow-y: auto;
+  }
+  #edit-product-overlay.is-open { display: flex; }
+
+  /* ═══════════════════════════════════════════════════════
+     EDIT OVERLAY — modal card  (matches the design image)
+  ═══════════════════════════════════════════════════════ */
+  .edit-overlay-card {
+    box-sizing: border-box;
+    width: 100%;
+    max-width: 753px;
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+    box-shadow: 36px 30px 13px transparent,
+                23px 19px 12px rgba(62,44,35,0.01),
+                13px 11px 10px rgba(62,44,35,0.05),
+                6px 5px 8px rgba(62,44,35,0.09),
+                1px 1px 4px rgba(62,44,35,0.1);
+    backdrop-filter: blur(20.6px);
+    -webkit-backdrop-filter: blur(20.6px);
+    border-radius: 15px;
+    background: linear-gradient(146.01deg,
+        rgba(253,253,253,0.58),
+        rgba(254,246,227,0.49) 49.52%,
+        rgba(255,244,216,0.6)),
+      linear-gradient(rgba(252,248,238,0.2), rgba(252,248,238,0.2));
+    border: 2px solid var(--text-brown);
+    overflow: hidden;
+    padding: 17px 15px;
+    animation: editModalIn 0.2s ease;
+  }
+  @keyframes editModalIn {
+    from { opacity: 0; transform: translateY(-12px) scale(0.98); }
+    to   { opacity: 1; transform: translateY(0)     scale(1); }
+  }
+
+  /* Header row */
+  .eo-header {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: var(--gap-10);
+    margin-bottom: 14px;
+  }
+  .eo-title {
+    margin: 0;
+    flex: 1;
+    font-size: 32px;
+    letter-spacing: -0.04em;
+    font-weight: 800;
+    font-family: var(--font-inter);
+    color: var(--text-brown);
+    min-width: 179px;
+  }
+  .eo-close-btn {
+    cursor: pointer;
+    border: 0;
+    padding: 0;
+    background: transparent;
+    height: 34px;
+    width: 34px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 18px;
+    color: var(--text-brown);
+    transition: background 0.15s;
+  }
+  .eo-close-btn:hover { background: rgba(62,44,35,0.1); }
+
+  /* Flash banner */
+  .eo-flash {
+    display: none;
+    padding: 8px 14px;
+    border-radius: var(--br-10);
+    font-family: var(--font-inter);
+    font-size: 14px;
+    margin-bottom: 10px;
+  }
+  .eo-flash.show { display: block; }
+  .eo-flash.flash-success { background:#d4edda; color:#155724; border:1px solid #c3e6cb; }
+  .eo-flash.flash-error   { background:#f8d7da; color:#721c24; border:1px solid #f5c6cb; }
+
+  /* Inner beige form section */
+  .eo-form-card {
+    box-shadow: 31px 57px 18px transparent,
+                20px 36px 17px rgba(0,0,0,0.01),
+                11px 20px 14px rgba(0,0,0,0.03),
+                5px 9px 10px rgba(0,0,0,0.04),
+                1px 2px 6px rgba(0,0,0,0.05);
+    border-radius: var(--br-10);
+    overflow: hidden;
+    padding: var(--padding-12) 14px var(--padding-10);
+    display: flex;
+    flex-direction: column;
+    gap: var(--gap-8);
+    background: rgba(252,248,235,0.92);
+    font-family: var(--font-inter);
+    font-size: var(--fs-18);
+    color: var(--color-gray-100);
+  }
+
+  /* Top row: image + product name/category */
+  .eo-top-row {
+    display: flex;
+    align-items: flex-start;
+    gap: var(--gap-10);
+    flex-wrap: wrap;
+  }
+
+  /* Image upload box */
+  .eo-img-box {
+    height: 201px;
+    width: 232px;
+    flex-shrink: 0;
+    border-radius: var(--br-10);
+    border: 2px dashed rgba(62,44,35,0.3);
+    background: rgba(253,243,219,0.5);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    position: relative;
+    cursor: pointer;
+    overflow: hidden;
+  }
+  .eo-img-box input[type="file"] {
+    position: absolute;
+    inset: 0;
+    opacity: 0;
+    cursor: pointer;
+    width: 100%;
+    height: 100%;
+  }
+  .eo-img-box img.eo-img-preview {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    border-radius: var(--br-10);
+    display: none;
+  }
+  .eo-img-placeholder {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+    pointer-events: none;
+    color: var(--text-brown);
+    opacity: 0.45;
+  }
+  .eo-img-placeholder i    { font-size: 52px; }
+  .eo-img-placeholder span { font-size: 12px; font-family: var(--font-inter); }
+
+  /* Right fields */
+  .eo-right-fields {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: var(--gap-8);
+    min-width: 220px;
+    justify-content: center;
+    padding: 30px 0 28px;
+  }
+
+  /* Field group */
+  .eo-field-group {
+    display: flex;
+    flex-direction: column;
+    gap: var(--gap-4);
+    align-self: stretch;
+  }
+  .eo-label {
+    font-size: var(--fs-16);
+    letter-spacing: -0.04em;
+    color: var(--text-brown);
+    font-weight: 500;
+  }
+  .eo-input-field {
+    height: var(--height-41);
+    border-radius: var(--br-10);
+    background-color: var(--color-cornsilk);
+    border: var(--border-1);
+    box-sizing: border-box;
+    display: flex;
+    align-items: center;
+    padding: var(--padding-10) var(--padding-12) var(--padding-10) var(--padding-20);
+    gap: 4px;
+  }
+  .eo-input-field input {
+    width: 100%;
+    border: 0;
+    outline: 0;
+    font-family: var(--font-inter);
+    font-size: var(--fs-16);
+    background: transparent;
+    letter-spacing: -0.04em;
+    color: var(--color-gray-300);
+    padding: 0;
+  }
+  .eo-peso { font-size: var(--fs-16); color: var(--text-brown); flex-shrink: 0; }
+
+  /* SKU (read-only) */
+  .eo-sku-field {
+    height: var(--height-41);
+    border-radius: var(--br-10);
+    background-color: var(--color-cornsilk);
+    border: var(--border-1);
+    box-sizing: border-box;
+    display: flex;
+    align-items: center;
+    padding: var(--padding-10) var(--padding-12) var(--padding-10) var(--padding-20);
+    font-family: var(--font-inter);
+    font-size: var(--fs-16);
+    color: var(--color-gray-200);
+    letter-spacing: -0.04em;
+  }
+
+  /* Expiry date row */
+  .eo-expiry-wrap {
+    height: 42px;
+    border-radius: var(--br-10);
+    background-color: var(--color-cornsilk);
+    border: var(--border-1);
+    box-sizing: border-box;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: var(--padding-10) var(--padding-12) var(--padding-10) var(--padding-20);
+    font-size: 13px;
+    color: var(--color-gray-200);
+  }
+  .eo-date-picker {
+    display: flex;
+    align-items: center;
+    gap: var(--gap-10);
+  }
+  .eo-date-picker i { font-size: 16px; color: var(--text-brown); }
+  .eo-date-picker input[type="date"] {
+    border: 0; outline: 0; background: transparent;
+    font-family: var(--font-inter); font-size: 13px;
+    color: var(--color-gray-200); cursor: pointer;
+  }
+  .eo-none-part {
+    display: flex; align-items: center; gap: 6px;
+    font-size: 13px; color: var(--text-brown);
+  }
+
+  /* Inline row for multiple fields */
+  .eo-fields-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--gap-10);
+    align-items: flex-start;
+  }
+  .eo-fields-row .eo-field-group { flex: 1; min-width: 140px; }
+
+  /* Notes textarea */
+  .eo-textarea-field {
+    height: 72px;
+    border-radius: var(--br-10);
+    background-color: var(--color-cornsilk);
+    border: var(--border-1);
+    box-sizing: border-box;
+    display: flex;
+    align-items: flex-start;
+    padding: 9px 18px;
+    overflow: hidden;
+  }
+  .eo-textarea-field textarea {
+    width: 100%; border: 0; outline: 0; background: transparent;
+    font-family: var(--font-inter); font-size: var(--fs-16);
+    color: var(--color-gray-300); resize: none; height: 100%;
+    letter-spacing: -0.04em;
+  }
+
+  /* Footer buttons */
+  .eo-footer {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    padding: 2px 0 0;
+    gap: var(--gap-10);
+  }
+  .eo-btn-cancel {
+    border: none; background: transparent; cursor: pointer;
+    border-radius: 231px;
+    padding: var(--padding-10) var(--padding-20);
+    font-family: var(--font-inter); font-size: var(--fs-16);
+    font-weight: 500; letter-spacing: -0.04em; color: var(--text-brown);
+  }
+  .eo-btn-cancel:hover { text-decoration: underline; }
+  .eo-btn-update {
+    cursor: pointer;
+    border: 2px solid var(--text-brown);
+    padding: var(--padding-10) var(--padding-20);
+    background-color: var(--color-khaki);
+    box-shadow: -26px -17px 9px transparent inset,
+                -17px -11px 8px rgba(44,44,44,0.01) inset,
+                -9px -6px 7px rgba(44,44,44,0.05) inset,
+                -4px -3px 5px rgba(44,44,44,0.09) inset,
+                -1px -1px 3px rgba(44,44,44,0.1) inset;
+    border-radius: 231px;
+    display: flex; align-items: center; justify-content: center;
+    font-family: var(--font-inter); font-size: var(--fs-16);
+    font-weight: 500; letter-spacing: -0.04em; color: var(--text-brown);
+  }
+  .eo-btn-update:hover { background-color: rgba(235,214,101,0.9); }
+
+  @media screen and (max-width: 800px) {
+    .edit-overlay-card { max-width: 100%; width: calc(100% - 40px); }
+    .eo-title { font-size: 26px; }
+  }
+  @media screen and (max-width: 450px) {
+    .eo-title { font-size: 19px; }
+    .eo-fields-row { flex-wrap: wrap; }
+  }
+  </style>
 </head>
 <body>
 
 <div class="page-wrapper">
 
-  <!-- ============================================================
-       SIDEBAR (active page: restock)
-       ============================================================ -->
-  <?php
-    $activePage = 'restock';
-    include 'sidebar.php';
-  ?>
+  <?php $activePage = 'restock'; include 'sidebar.php'; ?>
 
-  <!-- ============================================================
-       MAIN BODY
-       ============================================================ -->
   <div class="main-body">
 
-    <!-- ── Overview Section: Title + Alerts + Stat Cards (all inside the rounded container) ── -->
+    <!-- ── Overview Section ── -->
     <div class="overview-section">
-
-      <!-- Page Title -->
       <h1 class="page-title">RESTOCK</h1>
 
-      <!-- Alerts -->
       <?php if ($message): ?>
         <div class="alert alert-success"><?= htmlspecialchars($message) ?></div>
       <?php endif; ?>
@@ -240,13 +822,9 @@ $activePage = 'restock';
       <?php endif; ?>
 
       <div class="overview-cards">
-
-        <!-- Out of Stocks -->
         <div class="stat-card red-bg">
           <div class="stat-icon icon-red">
-            
-              <img src="pics_icons/out-of-stock (1).png" width="33" alt="Out of Stock"/>
-            
+            <img src="pics_icons/out-of-stock (1).png" width="33" alt="Out of Stock"/>
           </div>
           <div class="stat-info">
             <span class="stat-label">Out of Stocks</span>
@@ -254,12 +832,9 @@ $activePage = 'restock';
           </div>
         </div>
 
-        <!-- Expired Products -->
         <div class="stat-card orange-bg">
           <div class="stat-icon icon-orange">
-            
-              <img src="pics_icons/expired.png" width="33" alt="Expired"/>
-            
+            <img src="pics_icons/expired.png" width="33" alt="Expired"/>
           </div>
           <div class="stat-info">
             <span class="stat-label">Expired Products</span>
@@ -267,7 +842,6 @@ $activePage = 'restock';
           </div>
         </div>
 
-        <!-- Low on Stock -->
         <div class="stat-card cream-bg">
           <div class="stat-icon icon-gray">
             <img src="pics_icons/arrow-trend-down.png" width="33" alt="Low Stock"/>
@@ -279,350 +853,504 @@ $activePage = 'restock';
           </div>
         </div>
 
-        <!-- Near Expiry -->
         <div class="stat-card lavender-bg">
           <div class="stat-icon icon-blue">
-           
-              <img src="pics_icons/duration-alt.png" width="33" alt="Near Expiry"/>
-            
+            <img src="pics_icons/duration-alt.png" width="33" alt="Near Expiry"/>
           </div>
           <div class="stat-info">
             <span class="stat-label">Near Expiry</span>
             <span class="stat-value blue"><?= (int)($counts['near_expiry'] ?? 0) ?> Product<?= (int)($counts['near_expiry'] ?? 0) !== 1 ? 's' : '' ?></span>
           </div>
         </div>
-
       </div>
-    </div><!-- /overview-section -->
+    </div>
 
     <!-- ── Table Section ── -->
     <div class="table-section">
 
-      <!-- Toolbar -->
       <div class="table-toolbar">
         <div class="toolbar-left">
 
-          <!-- Search Form -->
           <form method="get" style="display:contents;">
             <input type="hidden" name="tab"  value="<?= htmlspecialchars($tab) ?>"/>
             <input type="hidden" name="page" value="1"/>
             <div class="searchbar">
-              <!--
-                TODO: Replace with your magnifying glass icon image.
-                e.g. <img src="pics_icons/magnifying-glass.svg" alt="Search" width="20" height="20"/>
-              -->
               <i class="bi bi-search"></i>
-              <input
-                type="text"
-                name="search"
-                placeholder="Search for product / sku"
-                value="<?= htmlspecialchars($search) ?>"
-              />
+              <input type="text" name="search" placeholder="Search for product / sku"
+                     value="<?= htmlspecialchars($search) ?>"/>
             </div>
-            <!-- Hidden submit triggered by Enter key -->
           </form>
 
-          <!-- Filter Tab Buttons -->
           <div class="filter-tabs">
-            <a
-              href="restock.php?tab=all<?= !empty($search) ? '&search='.urlencode($search) : '' ?>&page=1"
-              class="tab-btn <?= $tab === 'all' ? 'active' : '' ?>"
-            >All products</a>
+            <a href="restock.php?tab=all<?= !empty($search) ? '&search='.urlencode($search) : '' ?>&page=1"
+               class="tab-btn <?= $tab === 'all'     ? 'active' : '' ?>">All products</a>
+            <a href="restock.php?tab=out<?= !empty($search) ? '&search='.urlencode($search) : '' ?>&page=1"
+               class="tab-btn <?= $tab === 'out'     ? 'active' : '' ?>">Out of Stock</a>
+            <a href="restock.php?tab=low<?= !empty($search) ? '&search='.urlencode($search) : '' ?>&page=1"
+               class="tab-btn <?= $tab === 'low'     ? 'active' : '' ?>">Low Stock</a>
+            <a href="restock.php?tab=expired<?= !empty($search) ? '&search='.urlencode($search) : '' ?>&page=1"
+               class="tab-btn <?= $tab === 'expired' ? 'active' : '' ?>">Expired</a>
+            <a href="restock.php?tab=near<?= !empty($search) ? '&search='.urlencode($search) : '' ?>&page=1"
+               class="tab-btn <?= $tab === 'near'    ? 'active' : '' ?>">Near Expiry</a>
 
-            <a
-              href="restock.php?tab=out<?= !empty($search) ? '&search='.urlencode($search) : '' ?>&page=1"
-              class="tab-btn <?= $tab === 'out' ? 'active' : '' ?>"
-            >Out of Stock</a>
-
-            <a
-              href="restock.php?tab=low<?= !empty($search) ? '&search='.urlencode($search) : '' ?>&page=1"
-              class="tab-btn <?= $tab === 'low' ? 'active' : '' ?>"
-            >Low Stock</a>
-
-            <a
-              href="restock.php?tab=expired<?= !empty($search) ? '&search='.urlencode($search) : '' ?>&page=1"
-              class="tab-btn <?= $tab === 'expired' ? 'active' : '' ?>"
-            >Expired</a>
-
-            <a
-              href="restock.php?tab=near<?= !empty($search) ? '&search='.urlencode($search) : '' ?>&page=1"
-              class="tab-btn <?= $tab === 'near' ? 'active' : '' ?>"
-            >Near Expiry</a>
-
-            <!-- Import CSV -->
             <button type="button" class="btn-import" onclick="document.getElementById('csv-upload').click()">
-              <!--
-                TODO: Replace with your import/upload icon image.
-                e.g. <img src="pics_icons/uil-import.svg" alt="Import" width="20" height="20"/>
-              -->
-              <i class="bi bi-upload"></i>
-              Import CSV
+              <i class="bi bi-upload"></i> Import CSV
             </button>
-            <!-- Hidden file input for CSV import -->
             <input type="file" id="csv-upload" accept=".csv" style="display:none;" onchange="handleCsvImport(this)"/>
           </div>
 
         </div>
-      </div><!-- /table-toolbar -->
+      </div>
 
-      <!-- Table -->
-      <div class="table-scroll-wrapper">
-        <div class="table-wrapper">
-          <table class="restock-table">
-            <thead>
-              <tr>
-                <th>Product Name</th>
-                <th>SKU</th>
-                <th>Category</th>
-                <th>Stock</th>
-                <th>Add Qty</th>
-                <th>Expiry Date</th>
-                <th>Price</th>
-                <th>Status</th>
-                <th>Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              <?php if (empty($products)): ?>
-                <tr class="empty-state">
-                  <td colspan="9">No products found.</td>
-                </tr>
-              <?php else: ?>
-                <?php foreach ($products as $p):
-                  // Determine badge class
-                  $status = htmlspecialchars($p['status'] ?? 'In Stock');
-                  $badgeClass = match($p['status'] ?? '') {
-                      'Out of Stock' => 'badge-out-of-stock',
-                      'Low Stock'    => 'badge-low-stock',
-                      'Near Expiry'  => 'badge-near-expiry',
-                      'Expired'      => 'badge-expired',
-                      default        => 'badge-in-stock',
-                  };
+      <!-- Batch restock form — wraps the entire table so Complete can collect all qty inputs -->
+      <form method="post" id="batch-restock-form">
+        <input type="hidden" name="action" value="batch_restock"/>
 
-                  // Determine display status label
-                  $statusLabel = $p['status'] ?? 'In Stock';
-                  if (empty($statusLabel)) $statusLabel = 'In Stock';
-
-                  // Format expiry date
-                  $expiryDisplay = '';
-                  if (!empty($p['expiration_date'])) {
-                      try {
-                          $dt = new DateTime($p['expiration_date']);
-                          $expiryDisplay = $dt->format('m/d/y');
-                      } catch (Exception $e) {
-                          $expiryDisplay = htmlspecialchars($p['expiration_date']);
-                      }
-                  } else {
-                      $expiryDisplay = 'No Expiry Date';
-                  }
-
-                  // Price display (retail_price for display, cost_price for restock)
-                  $displayPrice = number_format((float)($p['retail_price'] ?? 0), 0);
-                  $rowQtyId     = 'qty_' . (int)$p['product_id'];
-                ?>
+        <div class="table-scroll-wrapper">
+          <div class="table-wrapper">
+            <table class="restock-table">
+              <thead>
                 <tr>
-                  <!-- Product Name -->
-                  <td class="td-product-name"><?= htmlspecialchars($p['product_name']) ?></td>
+                  <th>Product Name</th>
+                  <th>SKU</th>
+                  <th>Category</th>
+                  <th>Stock</th>
+                  <th>Add Qty</th>
+                  <th>Expiry Date</th>
+                  <th>Price</th>
+                  <th>Status</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                <?php if (empty($products)): ?>
+                  <tr class="empty-state">
+                    <td colspan="9">No products found.</td>
+                  </tr>
+                <?php else: ?>
+                  <?php foreach ($products as $p):
+                    $status = htmlspecialchars($p['status'] ?? 'In Stock');
+                    $badgeClass = match($p['status'] ?? '') {
+                        'Out of Stock' => 'badge-out-of-stock',
+                        'Low Stock'    => 'badge-low-stock',
+                        'Near Expiry'  => 'badge-near-expiry',
+                        'Expired'      => 'badge-expired',
+                        default        => 'badge-in-stock',
+                    };
+                    $statusLabel  = $p['status'] ?? 'In Stock';
+                    if (empty($statusLabel)) $statusLabel = 'In Stock';
 
-                  <!-- SKU -->
-                  <td class="td-sku"><?= htmlspecialchars($p['sku']) ?></td>
+                    $expiryDisplay = '';
+                    if (!empty($p['expiration_date'])) {
+                        try {
+                            $dt = new DateTime($p['expiration_date']);
+                            $expiryDisplay = $dt->format('m/d/y');
+                        } catch (Exception $e) {
+                            $expiryDisplay = htmlspecialchars($p['expiration_date']);
+                        }
+                    } else {
+                        $expiryDisplay = 'No Expiry Date';
+                    }
 
-                  <!-- Category -->
-                  <td class="td-category"><?= htmlspecialchars($p['category_name']) ?></td>
+                    $displayPrice = number_format((float)($p['retail_price'] ?? 0), 0);
+                    $rowQtyId     = 'qty_' . (int)$p['product_id'];
+                    $batchName    = 'batch[' . (int)$p['product_id'] . ']';
+                  ?>
+                  <tr>
+                    <td class="td-product-name"><?= htmlspecialchars($p['product_name']) ?></td>
+                    <td class="td-sku"><?= htmlspecialchars($p['sku']) ?></td>
+                    <td class="td-category"><?= htmlspecialchars($p['category_name']) ?></td>
+                    <td class="td-stock"><?= (int)$p['quantity'] ?></td>
 
-                  <!-- Current Stock -->
-                  <td class="td-stock"><?= (int)$p['quantity'] ?></td>
+                    <!-- Add Qty Stepper — default 0, only submitted rows (>0) get restocked -->
+                    <td class="td-qty">
+                      <div class="qty-stepper">
+                        <button type="button" onclick="changeQty('<?= $rowQtyId ?>', 1)" title="Increase">
+                          <i class="bi bi-plus-circle" style="font-size:16px;"></i>
+                        </button>
+                        <input
+                          class="qty-input"
+                          type="number"
+                          id="<?= $rowQtyId ?>"
+                          name="<?= $batchName ?>"
+                          min="0"
+                          value="0"
+                        />
+                        <button type="button" onclick="changeQty('<?= $rowQtyId ?>', -1)" title="Decrease">
+                          <i class="bi bi-dash-circle" style="font-size:16px;"></i>
+                        </button>
+                      </div>
+                    </td>
 
-                  <!-- Add Qty Stepper -->
-                  <td class="td-qty">
-                    <div class="qty-stepper">
-                      <button type="button" onclick="changeQty('<?= $rowQtyId ?>', 1)" title="Increase">
-                        <!--
-                          TODO: Replace with your circle-add icon.
-                          e.g. <img src="pics_icons/lsicon-circle-add-outline.svg" alt="+" width="16" height="16"/>
-                        -->
-                        <i class="bi bi-plus-circle" style="font-size:16px;"></i>
-                      </button>
-                      <input
-                        class="qty-input"
-                        type="number"
-                        id="<?= $rowQtyId ?>"
-                        name="qty_<?= (int)$p['product_id'] ?>"
-                        min="1"
-                        value="1"
-                      />
-                      <button type="button" onclick="changeQty('<?= $rowQtyId ?>', -1)" title="Decrease">
-                        <!--
-                          TODO: Replace with your minus icon.
-                          e.g. <img src="pics_icons/lsicon-minus-outline.svg" alt="-" width="16" height="16"/>
-                        -->
-                        <i class="bi bi-dash-circle" style="font-size:16px;"></i>
-                      </button>
-                    </div>
-                  </td>
+                    <td class="td-expiry">
+                      <div class="expiry-wrap">
+                        <span><?= $expiryDisplay ?></span>
+                        <i class="bi bi-calendar3"></i>
+                      </div>
+                    </td>
 
-                  <!-- Expiry Date -->
-                  <td class="td-expiry">
-                    <div class="expiry-wrap">
-                      <span><?= $expiryDisplay ?></span>
-                      <!--
-                        TODO: Replace with your calendar icon.
-                        e.g. <img src="pics_icons/uiw-date.svg" alt="date" width="20" height="20"/>
-                      -->
-                      <i class="bi bi-calendar3"></i>
-                    </div>
-                  </td>
+                    <td class="td-price">₱ <?= $displayPrice ?></td>
 
-                  <!-- Price -->
-                  <td class="td-price">₱ <?= $displayPrice ?></td>
+                    <td class="td-status">
+                      <span class="status-badge <?= $badgeClass ?>"><?= htmlspecialchars($statusLabel) ?></span>
+                    </td>
 
-                  <!-- Status Badge -->
-                  <td class="td-status">
-                    <span class="status-badge <?= $badgeClass ?>"><?= htmlspecialchars($statusLabel) ?></span>
-                  </td>
-
-                  <!-- Actions -->
-                  <td class="td-actions">
-                    <div class="actions-wrap">
-                      <!-- Restock (submit) button wrapped in form -->
-                      <form method="post" style="display:contents;">
-                        <input type="hidden" name="action"     value="restock"/>
-                        <input type="hidden" name="product_id" value="<?= (int)$p['product_id'] ?>"/>
-                        <input type="hidden" name="cost_price" value="<?= (float)$p['cost_price'] ?>"/>
-                        <input type="hidden" name="qty_added"  id="hidden_<?= $rowQtyId ?>"/>
-                        <!-- View / Restock button -->
+                    <td class="td-actions">
+                      <div class="actions-wrap">
+                        <!-- Eye icon → opens Edit overlay (no page reload) -->
                         <button
-                          type="submit"
+                          type="button"
                           class="btn-action"
-                          title="Restock this product"
-                          onclick="document.getElementById('hidden_<?= $rowQtyId ?>').value = document.getElementById('<?= $rowQtyId ?>').value;"
+                          title="Edit this product"
+                          onclick="openEditOverlay(<?= (int)$p['product_id'] ?>)"
                         >
-                          <!--
-                            TODO: Replace with your view/restock icon.
-                            e.g. <img src="pics_icons/view.svg" alt="Restock" width="22" height="20"/>
-                          -->
                           <i class="bi bi-eye"></i>
                         </button>
-                      </form>
 
-                      <!-- Delete button -->
-                      <form method="post" style="display:contents;" onsubmit="return confirm('Remove this product?');">
-                        <input type="hidden" name="action"     value="delete"/>
-                        <input type="hidden" name="product_id" value="<?= (int)$p['product_id'] ?>"/>
-                        <button type="submit" class="btn-action" title="Delete">
-                          <!--
-                            TODO: Replace with your trash icon.
-                            e.g. <img src="pics_icons/trash.svg" alt="Delete" width="22" height="20"/>
-                          -->
+                        <!-- Delete -->
+                        
+                        <button
+                          type="button"
+                          class="btn-action"
+                          title="Delete"
+                          onclick="deleteProduct(<?= (int)$p['product_id'] ?>)"
+                        >
                           <i class="bi bi-trash3"></i>
                         </button>
-                      </form>
-                    </div>
-                  </td>
+                      </div>
+                    </td>
+                  </tr>
+                  <?php endforeach; ?>
+                <?php endif; ?>
+              </tbody>
+            </table>
+          </div>
+        </div>
 
-                </tr>
-                <?php endforeach; ?>
-              <?php endif; ?>
-            </tbody>
-          </table>
-        </div><!-- /table-wrapper -->
-      </div><!-- /table-scroll-wrapper -->
+        <!-- Pagination Row -->
+        <div class="pagination-row">
+          <?php if ($current_page > 1): ?>
+            <a href="<?= htmlspecialchars(pageUrl($current_page - 1, $tab, $search)) ?>" class="btn-page">
+              <i class="bi bi-arrow-left"></i> Prev
+            </a>
+          <?php else: ?>
+            <button class="btn-page" disabled style="opacity:0.4;cursor:default;">
+              <i class="bi bi-arrow-left"></i> Prev
+            </button>
+          <?php endif; ?>
 
-      <!-- Pagination Row -->
-      <div class="pagination-row">
-        <!-- Prev -->
-        <?php if ($current_page > 1): ?>
-          <a href="<?= htmlspecialchars(pageUrl($current_page - 1, $tab, $search)) ?>" class="btn-page">
-            <!--
-              TODO: Replace with your left-arrow icon.
-              e.g. <img src="pics_icons/tabler-arrow-left.svg" alt="Prev" width="24"/>
-            -->
-            <i class="bi bi-arrow-left"></i>
-            Prev
-          </a>
-        <?php else: ?>
-          <button class="btn-page" disabled style="opacity:0.4;cursor:default;">
-            <i class="bi bi-arrow-left"></i>
-            Prev
-          </button>
-        <?php endif; ?>
+          <?php if ($current_page < $total_pages): ?>
+            <a href="<?= htmlspecialchars(pageUrl($current_page + 1, $tab, $search)) ?>" class="btn-page">
+              Next <i class="bi bi-arrow-right"></i>
+            </a>
+          <?php else: ?>
+            <button class="btn-page" disabled style="opacity:0.4;cursor:default;">
+              Next <i class="bi bi-arrow-right"></i>
+            </button>
+          <?php endif; ?>
+        </div>
 
-        <!-- Next -->
-        <?php if ($current_page < $total_pages): ?>
-          <a href="<?= htmlspecialchars(pageUrl($current_page + 1, $tab, $search)) ?>" class="btn-page">
-            Next
-            <!--
-              TODO: Replace with your right-arrow icon.
-              e.g. <img src="pics_icons/mingcute-arrow-right-line.svg" alt="Next" width="24"/>
-            -->
-            <i class="bi bi-arrow-right"></i>
-          </a>
-        <?php else: ?>
-          <button class="btn-page" disabled style="opacity:0.4;cursor:default;">
-            Next
-            <i class="bi bi-arrow-right"></i>
-          </button>
-        <?php endif; ?>
-      </div><!-- /pagination-row -->
+        <!-- Bottom Actions -->
+        <div class="bottom-actions">
+          <button type="button" class="btn-cancel" onclick="window.location.href='restock.php'">Cancel</button>
+          <button type="submit" class="btn-complete" onclick="return handleComplete(event)">Complete</button>
+        </div>
 
-      <!-- Bottom Actions -->
-      <div class="bottom-actions">
-        <button type="button" class="btn-cancel" onclick="window.location.href='restock.php'">Cancel</button>
-        <button type="button" class="btn-complete" onclick="handleComplete()">Complete</button>
-      </div>
+      </form><!-- /batch-restock-form -->
 
     </div><!-- /table-section -->
 
   </div><!-- /main-body -->
 </div><!-- /page-wrapper -->
 
+
+<!-- ════════════════════════════════════════════════════════════
+     EDIT PRODUCT OVERLAY
+════════════════════════════════════════════════════════════ -->
+<div id="edit-product-overlay" role="dialog" aria-modal="true" aria-label="Edit Product">
+  <div class="edit-overlay-card">
+
+    <!-- Header -->
+    <div class="eo-header">
+      <h1 class="eo-title">EDIT PRODUCT</h1>
+      <button class="eo-close-btn" type="button" onclick="closeEditOverlay()" title="Close">
+        <i class="bi bi-x-lg"></i>
+      </button>
+    </div>
+
+    <!-- Flash -->
+    <div class="eo-flash" id="eo-flash"></div>
+
+    <!-- Beige form card -->
+    <section class="eo-form-card">
+      <form method="post" enctype="multipart/form-data" id="edit-product-form">
+        <input type="hidden" name="action"     value="update"/>
+        <input type="hidden" name="product_id" id="eo-product-id" value=""/>
+
+        <!-- Top row: image + name/category -->
+        <div class="eo-top-row">
+          <div class="eo-img-box" id="eo-img-box">
+            <div class="eo-img-placeholder" id="eo-img-placeholder">
+              <i class="bi bi-image-fill"></i>
+              <span>Click to upload</span>
+            </div>
+            <img class="eo-img-preview" id="eo-img-preview" src="" alt="Product Image"/>
+            <input type="file" name="product_image" id="eo-img-input" accept="image/*"
+                   onchange="eoPreviewImage(this)"/>
+          </div>
+
+          <div class="eo-right-fields">
+            <div class="eo-field-group">
+              <div class="eo-label">Product Name</div>
+              <div class="eo-input-field">
+                <input type="text" id="eo-name" name="product_name"
+                       placeholder="Enter Here" required autocomplete="off"/>
+              </div>
+            </div>
+            <div class="eo-field-group">
+              <div class="eo-label">Category</div>
+              <div class="eo-input-field">
+                <input type="text" id="eo-category" name="category"
+                       placeholder="Enter Here" list="eo-cat-list" autocomplete="off"/>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- SKU + Expiry Date -->
+        <div class="eo-fields-row" style="margin-top:8px;">
+          <div class="eo-field-group">
+            <div class="eo-label">SKU</div>
+            <div class="eo-sku-field" id="eo-sku-display">—</div>
+          </div>
+          <div class="eo-field-group">
+            <div class="eo-label">Expiry Date</div>
+            <div class="eo-expiry-wrap">
+              <div class="eo-date-picker">
+                <i class="bi bi-calendar3"></i>
+                <input type="date" id="eo-expiry" name="expiry_date"/>
+              </div>
+              <div class="eo-none-part">
+                <label for="eo-no-expiry">None</label>
+                <input type="checkbox" id="eo-no-expiry" name="no_expiry"
+                       onchange="eoToggleExpiry(this)"/>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Stock Qty + Cost + Selling Price -->
+        <div class="eo-fields-row" style="margin-top:8px;">
+          <div class="eo-field-group">
+            <div class="eo-label">Stock Quantity</div>
+            <div class="eo-input-field">
+              <input type="number" id="eo-qty" name="stock_quantity"
+                     placeholder="0" min="0" value="0"/>
+            </div>
+          </div>
+          <div class="eo-field-group">
+            <div class="eo-label">Cost</div>
+            <div class="eo-input-field">
+              <span class="eo-peso">₱</span>
+              <input type="number" id="eo-cost" name="cost"
+                     placeholder="0" step="0.01" min="0" value="0"/>
+            </div>
+          </div>
+          <div class="eo-field-group">
+            <div class="eo-label">Selling Price</div>
+            <div class="eo-input-field">
+              <span class="eo-peso">₱</span>
+              <input type="number" id="eo-retail" name="selling_price"
+                     placeholder="0" step="0.01" min="0" value="0"/>
+            </div>
+          </div>
+        </div>
+
+        <!-- Additional Notes -->
+        <div class="eo-fields-row" style="margin-top:8px;align-items:flex-start;">
+          <div class="eo-field-group" style="flex:1;">
+            <div class="eo-label">Additional Notes</div>
+            <div class="eo-textarea-field">
+              <textarea id="eo-notes" name="notes" placeholder="Enter Here"></textarea>
+            </div>
+          </div>
+        </div>
+
+        <!-- Footer -->
+        <div class="eo-footer" style="margin-top:8px;">
+          <button type="button" class="eo-btn-cancel" onclick="closeEditOverlay()">Cancel</button>
+          <button type="submit" class="eo-btn-update">Update</button>
+        </div>
+
+      </form>
+    </section>
+
+  </div>
+</div>
+
+<!-- Category datalist for edit overlay -->
+<datalist id="eo-cat-list">
+  <?php foreach ($categories as $cat): ?>
+    <option value="<?= htmlspecialchars($cat['category_name']) ?>">
+  <?php endforeach; ?>
+  <option value="Uncategorized">
+</datalist>
+
+
 <script>
-// ── Qty Stepper ──────────────────────────────────────────────
+'use strict';
+
+/* ── Product data from PHP ───────────────────────────────── */
+var productsData = <?= $productsDataJson ?>;
+
+/* ── Edit Overlay ────────────────────────────────────────── */
+var editOverlay = document.getElementById('edit-product-overlay');
+
+function openEditOverlay(productId) {
+  var p = productsData[productId];
+  if (!p) { console.error('Product not found:', productId); return; }
+
+  document.getElementById('eo-product-id').value = productId;
+  document.getElementById('eo-name').value        = p.product_name    || '';
+  document.getElementById('eo-category').value    = p.category_name   || '';
+  document.getElementById('eo-sku-display').textContent = p.sku || '—';
+  document.getElementById('eo-qty').value         = p.quantity;
+  document.getElementById('eo-cost').value        = parseFloat(p.cost_price   || 0).toFixed(2);
+  document.getElementById('eo-retail').value      = parseFloat(p.retail_price || 0).toFixed(2);
+  document.getElementById('eo-notes').value       = p.notes || '';
+
+  var expiryInput = document.getElementById('eo-expiry');
+  var noExpiryChk = document.getElementById('eo-no-expiry');
+  if (p.expiration_date) {
+    expiryInput.value    = p.expiration_date;
+    expiryInput.disabled = false;
+    noExpiryChk.checked  = false;
+  } else {
+    expiryInput.value    = '';
+    expiryInput.disabled = true;
+    noExpiryChk.checked  = true;
+  }
+
+  var preview     = document.getElementById('eo-img-preview');
+  var placeholder = document.getElementById('eo-img-placeholder');
+  if (p.image_url) {
+    preview.src           = p.image_url;
+    preview.style.display = 'block';
+    placeholder.style.display = 'none';
+  } else {
+    preview.src           = '';
+    preview.style.display = 'none';
+    placeholder.style.display = 'flex';
+  }
+  document.getElementById('eo-img-input').value = '';
+
+  // Clear flash
+  var flash = document.getElementById('eo-flash');
+  flash.className = 'eo-flash';
+  flash.textContent = '';
+
+  editOverlay.classList.add('is-open');
+  document.body.style.overflow = 'hidden';
+}
+
+function closeEditOverlay() {
+  editOverlay.classList.remove('is-open');
+  document.body.style.overflow = '';
+}
+
+editOverlay.addEventListener('click', function(e) {
+  if (e.target === editOverlay) closeEditOverlay();
+});
+
+function eoToggleExpiry(checkbox) {
+  var dateInput = document.getElementById('eo-expiry');
+  dateInput.disabled = checkbox.checked;
+  if (checkbox.checked) dateInput.value = '';
+}
+
+function eoPreviewImage(input) {
+  var preview     = document.getElementById('eo-img-preview');
+  var placeholder = document.getElementById('eo-img-placeholder');
+  if (input.files && input.files[0]) {
+    var reader = new FileReader();
+    reader.onload = function(e) {
+      preview.src           = e.target.result;
+      preview.style.display = 'block';
+      placeholder.style.display = 'none';
+    };
+    reader.readAsDataURL(input.files[0]);
+  }
+}
+
+/* ── Qty Stepper ─────────────────────────────────────────── */
 function changeQty(inputId, delta) {
-  const input = document.getElementById(inputId);
+  var input = document.getElementById(inputId);
   if (!input) return;
-  let val = parseInt(input.value, 10) || 1;
+  var val = parseInt(input.value, 10);
+  if (isNaN(val)) val = 0;
   val += delta;
-  if (val < 1) val = 1;
+  if (val < 0) val = 0;
   input.value = val;
 }
 
-// ── CSV Import Handler ───────────────────────────────────────
+/* ── Complete (batch restock) ────────────────────────────── */
+function handleComplete(e) {
+  var inputs  = document.querySelectorAll('#batch-restock-form input[name^="batch["]');
+  var hasAny  = false;
+  inputs.forEach(function(inp) {
+    if (parseInt(inp.value, 10) > 0) hasAny = true;
+  });
+  if (!hasAny) {
+    e.preventDefault();
+    alert('Please enter a quantity (greater than 0) for at least one product before completing the restock.');
+    return false;
+  }
+  // Remove zero-qty inputs so they don't pollute POST (optional, PHP ignores them anyway)
+  inputs.forEach(function(inp) {
+    if (parseInt(inp.value, 10) <= 0) inp.disabled = true;
+  });
+  return true;
+}
+
+/* ── CSV Import ──────────────────────────────────────────── */
 function handleCsvImport(fileInput) {
   if (!fileInput.files || !fileInput.files[0]) return;
-  const file = fileInput.files[0];
+  var file = fileInput.files[0];
   if (!file.name.endsWith('.csv')) {
     alert('Please select a valid CSV file.');
     fileInput.value = '';
     return;
   }
-  // TODO: Implement actual CSV upload logic to your server endpoint.
-  // e.g. use FormData + fetch() to POST the file to import_csv.php
   alert('CSV file selected: ' + file.name + '\n(Connect this to your import endpoint.)');
   fileInput.value = '';
 }
 
-// ── Complete Button ──────────────────────────────────────────
-function handleComplete() {
-  // The "Complete" button can trigger a batch restock of all checked items,
-  // or simply redirect. Adjust this logic to match your workflow.
-  alert('Restock complete! Inventory has been updated.');
-  window.location.href = 'restock.php';
-}
-
-// ── Searchbar: submit on Enter ───────────────────────────────
+/* ── Searchbar: submit on Enter ──────────────────────────── */
 document.addEventListener('DOMContentLoaded', function () {
-  const searchInput = document.querySelector('.searchbar input[type="text"]');
+  var searchInput = document.querySelector('.searchbar input[type="text"]');
   if (searchInput) {
     searchInput.addEventListener('keydown', function (e) {
-      if (e.key === 'Enter') {
-        e.preventDefault();
-        this.closest('form').submit();
-      }
+      if (e.key === 'Enter') { e.preventDefault(); this.closest('form').submit(); }
     });
   }
 });
+
+/* ── ESC closes edit overlay ─────────────────────────────── */
+document.addEventListener('keydown', function(e) {
+  if (e.key === 'Escape' && editOverlay.classList.contains('is-open')) closeEditOverlay();
+});
+function deleteProduct(productId) {
+  if (!confirm('Sure ka na bang idedelete? Hindi na to mababalik.')) return;
+  document.getElementById('delete-product-id').value = productId;
+  document.getElementById('delete-product-form').submit();
+}
 </script>
+
+<!-- Standalone delete form — must be inside body, outside batch form -->
+<form method="post" id="delete-product-form" style="display:none;">
+  <input type="hidden" name="action"     value="delete"/>
+  <input type="hidden" name="product_id" id="delete-product-id" value=""/>
+</form>
 
 </body>
 </html>

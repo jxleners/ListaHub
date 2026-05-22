@@ -35,14 +35,46 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         // ── DELETE ──────────────────────────────────────────
         if ($action === 'delete') {
-            $product_id = (int) ($_POST['product_id'] ?? 0);
-            if ($product_id) {
-                $del = $pdo->prepare(
-                    "DELETE FROM Product WHERE product_id = :id AND user_id = :user_id"
+    $product_id = (int) ($_POST['product_id'] ?? 0);
+    if ($product_id) {
+        // Snapshot before delete
+        $snapStmt = $pdo->prepare(
+            "SELECT quantity, product_name, expiration_date, status
+             FROM Product WHERE product_id = :id AND user_id = :user_id"
+        );
+        $snapStmt->execute([':id' => $product_id, ':user_id' => $user_id]);
+        $snap = $snapStmt->fetch();
+
+        if ($snap) {
+            $pdo->beginTransaction();
+
+            $is_expired = (!empty($snap['expiration_date']) && $snap['expiration_date'] < date('Y-m-d'))
+                           || $snap['status'] === 'Expired';
+
+            if (!$is_expired && (int)$snap['quantity'] > 0) {
+                $logStmt = $pdo->prepare(
+                    "INSERT INTO Inventory_Log
+                        (product_id, user_id, product_name_snap, movement_type, quantity_change,
+                         stock_before, stock_after, reference_type, adjustment_reason)
+                     VALUES (:pid, :uid, :pname, 'out', :qty_change, :qty_before, 0, 'manual', 'Other')"
                 );
-                $del->execute([':id' => $product_id, ':user_id' => $user_id]);
-                $message = 'Product deleted successfully.';
+                $logStmt->execute([
+                    ':pid'        => $product_id,
+                    ':uid'        => $user_id,
+                    ':pname'      => $snap['product_name'],
+                    ':qty_change' => (int)$snap['quantity'],
+                    ':qty_before' => (int)$snap['quantity'],
+                ]);
             }
+
+            $del = $pdo->prepare(
+                "DELETE FROM Product WHERE product_id = :id AND user_id = :user_id"
+            );
+            $del->execute([':id' => $product_id, ':user_id' => $user_id]);
+            $pdo->commit();
+            $message = 'Product deleted successfully.';
+        }
+    }
 
         // ── ADD PRODUCT ─────────────────────────────────────
         } elseif ($action === 'add') {
@@ -120,6 +152,26 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $skuStmt->execute([':id' => $new_id]);
                     $added_sku = $skuStmt->fetchColumn() ?: '';
 
+                    // Log product addition
+                    try {
+                        $pdo2 = getPDO();
+                        $logStmt = $pdo2->prepare(
+                            "INSERT INTO Inventory_Log
+                                (product_id, user_id, product_name_snap, movement_type, quantity_change,
+                                 stock_before, stock_after, reference_type, adjustment_reason)
+                             VALUES (:pid, :uid, :pname, 'in', :qty, 0, :qty2, 'product_addition', NULL)"
+                        );
+                        $logStmt->execute([
+                            ':pid'   => $new_id,
+                            ':uid'   => $user_id,
+                            ':pname' => $product_name,
+                            ':qty'   => max(1, $quantity),
+                            ':qty2'  => $quantity,
+                        ]);
+                    } catch (PDOException $e) {
+                        error_log("Product addition log error: " . $e->getMessage());
+                    }
+
                     $add_flash_msg  = 'Product "' . htmlspecialchars($product_name) . '" added successfully!' .
                                       ($added_sku ? ' (SKU: ' . htmlspecialchars($added_sku) . ')' : '');
                     $add_flash_type = 'success';
@@ -178,6 +230,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     }
 
                     if ($image_url) {
+                      
                         $upd = $pdo->prepare(
                             "UPDATE Product SET
                                 product_name    = :product_name,
@@ -227,7 +280,36 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         ]);
                     }
 
+                    // Log the edit if quantity changed
+                    $oldStmt = $pdo->prepare(
+                        "SELECT quantity, product_name FROM Product
+                         WHERE product_id = :id AND user_id = :user_id"
+                    );
+                    $oldStmt->execute([':id' => $product_id, ':user_id' => $user_id]);
+                    $oldSnap  = $oldStmt->fetch();
+                    $old_qty  = (int)($oldSnap['quantity'] ?? 0);
+                    $old_name = $oldSnap['product_name'] ?? '';
+
                     $pdo->commit();
+
+                    // Log product edit
+                    try {
+                        $pdo2 = getPDO();
+                        $logStmt = $pdo2->prepare(
+                            "INSERT INTO Inventory_Log
+                                (product_id, user_id, product_name_snap, movement_type, quantity_change,
+                                 stock_before, stock_after, reference_type, adjustment_reason)
+                             VALUES (:pid, :uid, :pname, 'in', 1, 0, 0, 'product_edit', NULL)"
+                        );
+                        $logStmt->execute([
+                            ':pid'   => $product_id,
+                            ':uid'   => $user_id,
+                            ':pname' => $product_name,
+                        ]);
+                    } catch (PDOException $e) {
+                        error_log("Product edit log error: " . $e->getMessage());
+                    }
+
                     $edit_flash_msg  = 'Product updated successfully!';
                     $edit_flash_type = 'success';
                     $edit_product_id = 0;

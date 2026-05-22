@@ -122,10 +122,17 @@ try {
 }
 
 // ── Helper: map reference_type to display label ───────────
-function transactionLabel(string $ref_type, string $movement): string {
-    if ($ref_type === 'restock') return 'Restock';
-    if ($ref_type === 'sale')    return 'Sale';
-    if ($ref_type === 'manual')  return 'Adjustment';
+function transactionLabel(string $ref_type, string $movement, string $reason = ''): string {
+    if ($ref_type === 'restock')           return 'Product Restock';
+    if ($ref_type === 'sale')              return 'Sold';
+    if ($ref_type === 'expired_deletion')  return 'Expired & Deleted';
+    if ($ref_type === 'product_addition')  return 'Product Addition';
+    if ($ref_type === 'product_edit')      return 'Product Edit';
+    if ($ref_type === 'manual') {
+        if ($reason === 'Other')                  return 'Product Deletion';
+        if ($reason === 'Stock Count Correction') return 'Product Edit';
+        return 'Adjustment';
+    }
     return ucfirst($ref_type);
 }
 
@@ -221,7 +228,7 @@ $activePage = 'inv_history';
                   <?php foreach ($logs as $row): ?>
                     <?php
                       $display_id   = displayId((int)$row['log_id'], $row['log_date']);
-                      $tx_label     = transactionLabel($row['reference_type'], $row['movement_type']);
+                      $tx_label = transactionLabel($row['reference_type'], $row['movement_type'], $row['adjustment_reason'] ?? '');
                       $date_display = date('m/d/Y - g:ia', strtotime($row['log_date']));
                       $item_name    = htmlspecialchars($row['product_name']);
                     ?>
