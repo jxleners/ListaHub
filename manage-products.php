@@ -433,9 +433,9 @@ $activePage = 'manage-products';
     display: flex;
     align-items: center;
     gap: 6px;
-    background: rgba(255, 255, 255, 0.55);
+    background: transparent;
     border: 1px solid rgba(62, 44, 35, 0.2);
-    border-radius: 231px;
+    border-radius: var(--br-10);
     padding: 8px 16px;
     white-space: nowrap;
     height: 37px;
@@ -462,9 +462,9 @@ $activePage = 'manage-products';
   }
   .category-select-pill {
     height: 37px;
-    border-radius: 231px;
+    border-radius: var(--br-10);
     border: 1px solid rgba(62, 44, 35, 0.2);
-    background: rgba(255, 255, 255, 0.55);
+    background: transparent;
     padding: 0 14px;
     font-family: var(--font-inter);
     font-size: 14px;
@@ -477,7 +477,7 @@ $activePage = 'manage-products';
   }
   .category-select-pill:hover {
     border-color: rgba(62, 44, 35, 0.4);
-    background: rgba(255, 255, 255, 0.8);
+    background: rgba(255, 255, 255, 0.15);
   }
   .category-select-pill:focus { border-color: var(--text-brown); }
 
@@ -538,6 +538,7 @@ $activePage = 'manage-products';
     overflow: hidden;
     padding: 17px 15px;
     gap: 0;
+    animation: modalIn 0.2s ease;
   }
 
   /* Header row */
@@ -994,7 +995,7 @@ $activePage = 'manage-products';
           <!-- Products count pill -->
           <div class="count-box">
             <span class="count-label">Products Count :</span>
-            <span class="count-val"><?= $total_products ?></span>
+            <span class="count-val"><?= count($products) ?></span>
           </div>
 
           <!-- Category dropdown (its own form so it submits only category_filter) -->
