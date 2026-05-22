@@ -24,77 +24,126 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     try {
         $pdo = getPDO();
 
-        /* ── ADD CUSTOMER + CREDIT ── */
-        if ($action === 'add') {
-            $customer_name   = trim($_POST['customer_name'] ?? '');
-            $amount_owed     = (float) ($_POST['amount_owed'] ?? 0);
+        /* ── UPDATE CUSTOMER (Edit Customer modal) ── */
+        if ($action === 'update_customer') {
+            $debt_id         = (int)   ($_POST['credit_id']      ?? 0);
+            $customer_id     = (int)   ($_POST['customer_id']    ?? 0);
+            $customer_name   = trim(   $_POST['customer_name']   ?? '');
+            $contact_number  = trim(   $_POST['contact_number']  ?? '');
+            $contact_address = trim(   $_POST['contact_address'] ?? '');
+            $amount_paid     = (float) ($_POST['amount_paid']    ?? 0);
             $settlement_date = $_POST['settlement_date'] ?? null;
+            $status          = $_POST['status'] ?? 'Unpaid';
+            $notes           = trim($_POST['notes'] ?? '');
 
-            if (empty($customer_name) || $amount_owed <= 0) {
-                $error = 'Customer name and a valid amount are required.';
+            $allowed = ['Unpaid', 'Partially Paid', 'Fully Paid'];
+            if (!in_array($status, $allowed)) $status = 'Unpaid';
+
+            /* Combine address + phone into contact_number field (pipe-separated) */
+            if ($contact_address !== '' && $contact_number !== '') {
+                $combined_contact = $contact_address . ' || ' . $contact_number;
+            } elseif ($contact_address !== '') {
+                $combined_contact = $contact_address;
             } else {
-                $pdo->beginTransaction();
-
-                $custStmt = $pdo->prepare("
-                    INSERT INTO customers (user_id, customer_name, created_at)
-                    VALUES (:user_id, :customer_name, NOW())
-                ");
-                $custStmt->execute([
-                    ':user_id'       => $user_id,
-                    ':customer_name' => $customer_name,
-                ]);
-
-                $customer_id = (int) $pdo->lastInsertId();
-
-                $creditStmt = $pdo->prepare("
-                    INSERT INTO customer_credits
-                        (customer_id, amount_owed, settlement_date, status, created_at)
-                    VALUES
-                        (:customer_id, :amount_owed, :settlement_date, 'pending', NOW())
-                ");
-                $creditStmt->execute([
-                    ':customer_id'    => $customer_id,
-                    ':amount_owed'    => $amount_owed,
-                    ':settlement_date'=> !empty($settlement_date) ? $settlement_date : null,
-                ]);
-
-                $pdo->commit();
-                $message = 'Customer added successfully.';
+                $combined_contact = $contact_number;
             }
-        }
 
-        /* ── UPDATE CREDIT ── */
-        if ($action === 'update') {
-            $credit_id       = (int) ($_POST['credit_id'] ?? 0);
-            $amount_owed     = (float) ($_POST['amount_owed'] ?? 0);
-            $settlement_date = $_POST['settlement_date'] ?? null;
-            $status          = $_POST['status'] ?? 'pending';
-
-            $allowed = ['pending', 'settled', 'overdue'];
-            if (!in_array($status, $allowed)) $status = 'pending';
-
-            if ($credit_id) {
+            if ($debt_id && $customer_id) {
                 $pdo->beginTransaction();
 
-                $upd = $pdo->prepare("
-                    UPDATE customer_credits cc
-                    JOIN customers c ON c.id = cc.customer_id
-                    SET cc.amount_owed     = :amount_owed,
-                        cc.settlement_date = :settlement_date,
-                        cc.status          = :status
-                    WHERE cc.id    = :id
-                      AND c.user_id = :user_id
+                /* 1. Update Customer name & contact in correct table */
+                $updCust = $pdo->prepare("
+                    UPDATE Customer
+                    SET customer_name  = :customer_name,
+                        contact_number = :contact_number
+                    WHERE customer_id = :customer_id
                 ");
-                $upd->execute([
-                    ':amount_owed'    => $amount_owed,
-                    ':settlement_date'=> !empty($settlement_date) ? $settlement_date : null,
-                    ':status'         => $status,
-                    ':id'             => $credit_id,
-                    ':user_id'        => $user_id,
+                $updCust->execute([
+                    ':customer_name'  => $customer_name,
+                    ':contact_number' => $combined_contact,
+                    ':customer_id'    => $customer_id,
                 ]);
 
-                $pdo->commit();
-                $message = 'Credit updated successfully.';
+                /* 2. Fetch current remaining balance for validation */
+                $balStmt = $pdo->prepare("
+                    SELECT remaining_balance, status FROM Debt WHERE debt_id = :debt_id
+                ");
+                $balStmt->execute([':debt_id' => $debt_id]);
+                $debtRow = $balStmt->fetch(PDO::FETCH_ASSOC);
+                $currentBalance = (float) ($debtRow['remaining_balance'] ?? 0);
+
+                /* 3. If amount paid > 0, insert Debt_Payment.
+                      The trigger trg_debt_payment_after_insert will automatically:
+                        - Deduct from Debt.remaining_balance
+                        - Update Debt.status (Partially Paid / Fully Paid)
+                        - Update Customer.total_outstanding */
+                if ($amount_paid > 0) {
+                    if ($amount_paid > $currentBalance) {
+                        $pdo->rollBack();
+                        $error = 'Payment amount (₱' . number_format($amount_paid, 2) . ') exceeds remaining balance (₱' . number_format($currentBalance, 2) . ').';
+                    } else {
+                        $payStmt = $pdo->prepare("
+                            INSERT INTO Debt_Payment (debt_id, payment_date, amount_paid)
+                            VALUES (:debt_id, CURDATE(), :amount_paid)
+                        ");
+                        $payStmt->execute([
+                            ':debt_id'     => $debt_id,
+                            ':amount_paid' => $amount_paid,
+                        ]);
+
+                        /* Update settlement date if provided */
+                        if (!empty($settlement_date)) {
+                            $pdo->prepare("
+                                UPDATE Debt SET settlement_date = :sd WHERE debt_id = :debt_id
+                            ")->execute([':sd' => $settlement_date, ':debt_id' => $debt_id]);
+                        }
+
+                        $pdo->commit();
+                        $message = 'Payment of ₱' . number_format($amount_paid, 2) . ' recorded successfully.';
+                    }
+
+                } else {
+                    /* No payment — manual status/date update only */
+                    if ($status === 'Fully Paid' && $currentBalance > 0) {
+                        /* Force-close: zero out the balance and mark paid */
+                        $pdo->prepare("
+                            UPDATE Debt
+                            SET remaining_balance = 0,
+                                status            = 'Fully Paid',
+                                settlement_date   = :sd
+                            WHERE debt_id = :debt_id
+                        ")->execute([
+                            ':sd'      => !empty($settlement_date) ? $settlement_date : date('Y-m-d'),
+                            ':debt_id' => $debt_id,
+                        ]);
+
+                        /* Sync Customer.total_outstanding */
+                        $pdo->prepare("
+                            UPDATE Customer
+                            SET total_outstanding = GREATEST(total_outstanding - :bal, 0)
+                            WHERE customer_id = :customer_id
+                        ")->execute([
+                            ':bal'         => $currentBalance,
+                            ':customer_id' => $customer_id,
+                        ]);
+
+                    } else {
+                        /* Just update settlement date and/or status label */
+                        $pdo->prepare("
+                            UPDATE Debt
+                            SET status          = :status,
+                                settlement_date = :sd
+                            WHERE debt_id = :debt_id
+                        ")->execute([
+                            ':status'  => $status,
+                            ':sd'      => !empty($settlement_date) ? $settlement_date : null,
+                            ':debt_id' => $debt_id,
+                        ]);
+                    }
+
+                    $pdo->commit();
+                    $message = 'Customer updated successfully.';
+                }
             }
         }
 
@@ -105,42 +154,33 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             if ($customer_id) {
                 $pdo->beginTransaction();
 
-                $del = $pdo->prepare("
-                    DELETE FROM customers
-                    WHERE id = :id AND user_id = :user_id
-                ");
-                $del->execute([
-                    ':id'      => $customer_id,
-                    ':user_id' => $user_id,
-                ]);
+                /* Remove Debt_Payment rows first (FK chain) */
+                $pdo->prepare("
+                    DELETE dp FROM Debt_Payment dp
+                    JOIN Debt d ON d.debt_id = dp.debt_id
+                    JOIN Sale s ON s.sale_id = d.sale_id
+                    WHERE s.customer_id = :customer_id
+                ")->execute([':customer_id' => $customer_id]);
+
+                /* Remove Debt rows */
+                $pdo->prepare("
+                    DELETE d FROM Debt d
+                    JOIN Sale s ON s.sale_id = d.sale_id
+                    WHERE s.customer_id = :customer_id
+                ")->execute([':customer_id' => $customer_id]);
+
+                /* Nullify customer_id on Sales so history is preserved */
+                $pdo->prepare("
+                    UPDATE Sale SET customer_id = NULL WHERE customer_id = :customer_id
+                ")->execute([':customer_id' => $customer_id]);
+
+                /* Delete the Customer row */
+                $pdo->prepare("
+                    DELETE FROM Customer WHERE customer_id = :customer_id
+                ")->execute([':customer_id' => $customer_id]);
 
                 $pdo->commit();
                 $message = 'Customer deleted.';
-            }
-        }
-
-        /* ── SETTLE CREDIT ── */
-        if ($action === 'settle') {
-            $credit_id = (int) ($_POST['credit_id'] ?? 0);
-
-            if ($credit_id) {
-                $pdo->beginTransaction();
-
-                $settle = $pdo->prepare("
-                    UPDATE customer_credits cc
-                    JOIN customers c ON c.id = cc.customer_id
-                    SET cc.status     = 'settled',
-                        cc.amount_owed = 0
-                    WHERE cc.id     = :id
-                      AND c.user_id  = :user_id
-                ");
-                $settle->execute([
-                    ':id'      => $credit_id,
-                    ':user_id' => $user_id,
-                ]);
-
-                $pdo->commit();
-                $message = 'Credit settled.';
             }
         }
 
@@ -152,7 +192,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 }
 
 /* ============================================================
-   FETCH DATA
+   FETCH DATA  —  reads Customer, Sale, Debt tables via views
    ============================================================ */
 $perPage     = 10;
 $currentPage = max(1, (int) ($_GET['page'] ?? 1));
@@ -166,33 +206,51 @@ try {
     /* ── Summary stats ── */
     $summaryStmt = $pdo->prepare("
         SELECT
-            COUNT(DISTINCT CASE WHEN cc.status != 'settled' THEN c.id END)           AS unsettled_count,
-            COUNT(DISTINCT c.id)                                                      AS total_customers,
-            COALESCE(SUM(CASE WHEN cc.status != 'settled' THEN cc.amount_owed END),0) AS total_credit
-        FROM customers c
-        LEFT JOIN customer_credits cc ON cc.customer_id = c.id
-        WHERE c.user_id = :user_id
+            COUNT(DISTINCT CASE WHEN co.total_remaining > 0 THEN co.customer_id END) AS unsettled_count,
+            COUNT(DISTINCT co.customer_id)                                            AS total_customers,
+            COALESCE(SUM(co.total_remaining), 0)                                     AS total_credit
+        FROM vw_customer_outstanding co
+        WHERE co.customer_id IN (
+            SELECT DISTINCT s.customer_id
+            FROM Sale s
+            JOIN Sale_Item si ON si.sale_id   = s.sale_id
+            JOIN Product   p  ON p.product_id = si.product_id
+            WHERE p.user_id = :user_id
+              AND s.customer_id IS NOT NULL
+        )
     ");
     $summaryStmt->execute([':user_id' => $user_id]);
     $summary = $summaryStmt->fetch(PDO::FETCH_ASSOC);
 
-    /* ── Count rows for pagination ── */
-    $countSql = "
-        SELECT COUNT(*) AS total
-        FROM customers c
-        LEFT JOIN customer_credits cc ON cc.customer_id = c.id
-        WHERE c.user_id = :user_id
-    ";
+    /* ── Build WHERE conditions ── */
+    $whereParts  = [];
     $countParams = [':user_id' => $user_id];
 
     if ($search) {
-        $countSql .= " AND c.customer_name LIKE :search";
+        $whereParts[]           = "vdd.customer_name LIKE :search";
         $countParams[':search'] = "%$search%";
     }
     if ($filterStatus) {
-        $countSql .= " AND cc.status = :status";
+        $whereParts[]           = "vdd.debt_status = :status";
         $countParams[':status'] = $filterStatus;
     }
+
+    $whereClause = $whereParts ? ('AND ' . implode(' AND ', $whereParts)) : '';
+
+    /* ── Count rows for pagination ── */
+    $countSql = "
+        SELECT COUNT(*) AS total
+        FROM vw_customer_debt_detail vdd
+        WHERE vdd.customer_id IN (
+            SELECT DISTINCT s.customer_id
+            FROM Sale s
+            JOIN Sale_Item si ON si.sale_id   = s.sale_id
+            JOIN Product   p  ON p.product_id = si.product_id
+            WHERE p.user_id = :user_id
+              AND s.customer_id IS NOT NULL
+        )
+        $whereClause
+    ";
 
     $countStmt = $pdo->prepare($countSql);
     $countStmt->execute($countParams);
@@ -200,28 +258,34 @@ try {
     $totalPages = max(1, (int) ceil($totalRows / $perPage));
 
     /* ── Customer list ── */
+    $listParams = $countParams;
     $sql = "
-        SELECT c.id AS customer_id, c.customer_name, c.created_at,
-               cc.id AS credit_id, cc.amount_owed, cc.settlement_date, cc.status
-        FROM customers c
-        LEFT JOIN customer_credits cc ON cc.customer_id = c.id
-        WHERE c.user_id = :user_id
+        SELECT
+            vdd.customer_id,
+            vdd.customer_name,
+            vdd.contact_number,
+            vdd.created_at,
+            vdd.debt_id           AS credit_id,
+            vdd.remaining_balance AS amount_owed,
+            vdd.original_amount,
+            vdd.settlement_date,
+            vdd.debt_status       AS status
+        FROM vw_customer_debt_detail vdd
+        WHERE vdd.customer_id IN (
+            SELECT DISTINCT s.customer_id
+            FROM Sale s
+            JOIN Sale_Item si ON si.sale_id   = s.sale_id
+            JOIN Product   p  ON p.product_id = si.product_id
+            WHERE p.user_id = :user_id
+              AND s.customer_id IS NOT NULL
+        )
+        $whereClause
+        ORDER BY vdd.created_at DESC
+        LIMIT :limit OFFSET :offset
     ";
-    $params = [':user_id' => $user_id];
-
-    if ($search) {
-        $sql .= " AND c.customer_name LIKE :search";
-        $params[':search'] = "%$search%";
-    }
-    if ($filterStatus) {
-        $sql .= " AND cc.status = :status";
-        $params[':status'] = $filterStatus;
-    }
-
-    $sql .= " ORDER BY c.created_at DESC LIMIT :limit OFFSET :offset";
 
     $stmt = $pdo->prepare($sql);
-    foreach ($params as $k => $v) $stmt->bindValue($k, $v);
+    foreach ($listParams as $k => $v) $stmt->bindValue($k, $v);
     $stmt->bindValue(':limit',  $perPage, PDO::PARAM_INT);
     $stmt->bindValue(':offset', $offset,  PDO::PARAM_INT);
     $stmt->execute();
@@ -237,9 +301,10 @@ try {
 /* ── Helper: map DB status → display label & CSS class ── */
 function statusInfo(string $status): array {
     return match($status) {
-        'settled' => ['label' => 'Fully Paid',     'class' => 'fully-paid'],
-        'overdue' => ['label' => 'Unpaid',          'class' => 'unpaid'],
-        default   => ['label' => 'Partially Paid',  'class' => 'partially-paid'],
+        'Fully Paid'     => ['label' => 'Fully Paid',     'class' => 'fully-paid'],
+        'Unpaid'         => ['label' => 'Unpaid',          'class' => 'unpaid'],
+        'Partially Paid' => ['label' => 'Partially Paid',  'class' => 'partially-paid'],
+        default          => ['label' => 'Partially Paid',  'class' => 'partially-paid'],
     };
 }
 
@@ -262,33 +327,235 @@ $activePage = 'customers';
   <meta name="viewport" content="initial-scale=1, width=device-width" />
   <title>Customers Credit – ListaHub</title>
 
-  <!-- Google Fonts: Inter -->
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:ital,wght@0,400;0,500;0,600;0,700;0,800;1,400;1,600;1,700&display=swap" />
-
-  <!--
-    TODO: Add Bootstrap Icons CDN for view / trash / chevron icons.
-    Uncomment the line below:
-  -->
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" />
 
-  <!-- CSS — load order matters; mirrors dashboard.php exactly -->
-  <link rel="stylesheet" href="global_sidebar.css" />   <!-- sidebar base variables -->
-  <link rel="stylesheet" href="global_customers.css" /> <!-- page variables (extends sidebar vars) -->
-  <link rel="stylesheet" href="sidebar.css" />          <!-- sidebar component styles -->
-  <link rel="stylesheet" href="customers.css" />        <!-- page styles -->
+  <link rel="stylesheet" href="global_sidebar.css" />
+  <link rel="stylesheet" href="global_customers.css" />
+  <link rel="stylesheet" href="sidebar.css" />
+  <link rel="stylesheet" href="customers.css" />
+
+  <style>
+  .edit-customer-box {
+    max-width: 560px !important;
+    background: linear-gradient(
+      146deg,
+      rgba(253,253,253,0.58),
+      rgba(254,246,227,0.49) 50%,
+      rgba(255,244,216,0.6)
+    ) !important;
+    border: 2px solid #3e2c23 !important;
+    gap: 0 !important;
+    padding: 20px !important;
+  }
+  .ec-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 10px;
+  }
+  .ec-title {
+    margin: 0;
+    font-size: 28px;
+    font-weight: 800;
+    letter-spacing: -0.04em;
+    color: #3e2c23;
+    font-family: Inter, sans-serif;
+  }
+  .ec-close-btn {
+    background: transparent;
+    border: none;
+    font-size: 18px;
+    color: #3e2c23;
+    cursor: pointer;
+    width: 34px;
+    height: 34px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: background 0.15s;
+    flex-shrink: 0;
+  }
+  .ec-close-btn:hover { background: rgba(62,44,35,0.1); }
+  .ec-form-wrap {
+    background-image: url('pics_icons/Product-Form@3x.png');
+    background-size: cover;
+    background-repeat: no-repeat;
+    background-position: top;
+    background-color: rgba(253,243,219,0.25);
+    border-radius: 10px;
+    padding: 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+  .ec-field {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+  .ec-label {
+    font-size: 16px;
+    font-weight: 600;
+    letter-spacing: -0.04em;
+    color: #3e2c23;
+    font-family: Inter, sans-serif;
+  }
+  .ec-input-wrap {
+    border-radius: 10px;
+    background-color: rgba(253,243,219,0.55);
+    border: 1px solid rgba(0,0,0,0.2);
+    overflow: hidden;
+    display: flex;
+    align-items: center;
+  }
+  .ec-textarea-wrap {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .ec-input {
+    width: 100%;
+    border: none;
+    outline: none;
+    background: transparent;
+    font-family: Inter, sans-serif;
+    font-size: 15px;
+    color: rgba(43,43,43,0.85);
+    letter-spacing: -0.04em;
+    padding: 10px 12px 10px 14px;
+    box-sizing: border-box;
+  }
+  .ec-input::placeholder { color: rgba(62,44,35,0.4); }
+  .ec-input-border-top { border-top: 1px solid rgba(0,0,0,0.15); }
+  .ec-textarea {
+    width: 100%;
+    border: none;
+    outline: none;
+    background: transparent;
+    font-family: Inter, sans-serif;
+    font-size: 15px;
+    color: rgba(43,43,43,0.85);
+    letter-spacing: -0.04em;
+    padding: 10px 12px 10px 14px;
+    box-sizing: border-box;
+    resize: none;
+    min-height: 72px;
+  }
+  .ec-textarea::placeholder { color: rgba(62,44,35,0.4); }
+  .ec-peso-wrap { gap: 0; }
+  .ec-peso {
+    padding-left: 14px;
+    font-size: 15px;
+    font-weight: 600;
+    color: #3e2c23;
+    flex-shrink: 0;
+  }
+  .ec-input-pl { padding-left: 6px; }
+  .ec-date-wrap { padding-left: 10px; gap: 6px; }
+  .ec-cal-icon {
+    font-size: 16px;
+    color: #3e2c23;
+    opacity: 0.7;
+    flex-shrink: 0;
+  }
+  input[type="date"].ec-input { padding-left: 6px; color: #3e2c23; }
+  .ec-status-wrap {
+    padding: 0;
+    justify-content: center;
+    min-height: 41px;
+  }
+  .ec-select-status {
+    width: 100%;
+    height: 100%;
+    border: none;
+    outline: none;
+    background: transparent;
+    font-family: Inter, sans-serif;
+    font-size: 14px;
+    font-weight: 700;
+    font-style: italic;
+    letter-spacing: -0.04em;
+    padding: 10px 12px;
+    cursor: pointer;
+    appearance: auto;
+    color: #ff383c;
+  }
+  .ec-status-unpaid  .ec-select-status { color: #ff383c; }
+  .ec-status-partial .ec-select-status { color: #e6a817; }
+  .ec-status-paid    .ec-select-status { color: #159459; }
+  .ec-row-3 {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+    align-items: flex-start;
+  }
+  .ec-row-3 .ec-field { flex: 1; min-width: 120px; }
+  .ec-footer {
+    display: flex;
+    justify-content: flex-end;
+    align-items: center;
+    gap: 10px;
+    padding-top: 6px;
+  }
+  .ec-btn-cancel {
+    background: rgba(252,248,238,0);
+    border: none;
+    font-family: Inter, sans-serif;
+    font-size: 15px;
+    font-weight: 500;
+    color: #3e2c23;
+    cursor: pointer;
+    padding: 10px 20px;
+    border-radius: 231px;
+    letter-spacing: -0.04em;
+    transition: background 0.15s;
+  }
+  .ec-btn-cancel:hover { background: rgba(62,44,35,0.08); }
+  .ec-btn-update {
+    background: rgba(235,214,101,0.66);
+    border: 2px solid #3e2c23;
+    font-family: Inter, sans-serif;
+    font-size: 15px;
+    font-weight: 500;
+    color: #3e2c23;
+    cursor: pointer;
+    padding: 10px 24px;
+    border-radius: 231px;
+    letter-spacing: -0.04em;
+    box-shadow:
+      -4px -3px 5px rgba(44,44,44,0.09) inset,
+      -1px -1px 3px rgba(44,44,44,0.1) inset;
+    transition: background 0.15s;
+  }
+  .ec-btn-update:hover { background: rgba(220,200,80,0.85); }
+
+  /* Balance preview inside modal */
+  .ec-balance-preview {
+    font-size: 13px;
+    color: #3e2c23;
+    opacity: 0.7;
+    font-family: Inter, sans-serif;
+    letter-spacing: -0.03em;
+    margin-top: 2px;
+  }
+  .ec-balance-preview span { font-weight: 700; opacity: 1; color: #e05a00; }
+
+  @media screen and (max-width: 600px) {
+    .ec-row-3 { flex-direction: column; }
+    .ec-title  { font-size: 22px; }
+  }
+  </style>
 </head>
 <body>
 
 <div class="customer-page">
   <div class="page-container">
 
-    <!-- ===== SIDEBAR ===== -->
     <?php include 'sidebar.php'; ?>
 
-    <!-- ===== MAIN BODY ===== -->
     <main class="main-body">
 
-      <!-- Flash messages -->
       <?php if ($message): ?>
         <div class="flash-msg success"><?= htmlspecialchars($message) ?></div>
       <?php endif; ?>
@@ -303,14 +570,8 @@ $activePage = 'customers';
 
           <div class="cards-row">
 
-            <!-- Unsettled Customers Card -->
             <div class="summary-card card-unsettled">
               <div class="card-inner">
-                <!--
-                  TODO: Replace with your icon image or use Bootstrap Icons.
-                  Option A (image): <img class="card-icon" src="pics_icons/Group-494.png" alt="Unsettled" />
-                  Option B (Bootstrap Icons):
-                -->
                 <div class="card-icon-placeholder icon-red">
                   <i class="bi bi-calendar-x-fill"></i>
                 </div>
@@ -323,14 +584,8 @@ $activePage = 'customers';
               </div>
             </div>
 
-            <!-- Total Credit Card -->
             <div class="summary-card card-credit">
               <div class="card-inner">
-                <!--
-                  TODO: Replace with your icon image or use Bootstrap Icons.
-                  Option A (image): <img class="card-icon" src="pics_icons/Group-494.png" alt="Credit" />
-                  Option B (Bootstrap Icons):
-                -->
                 <div class="card-icon-placeholder icon-orange">
                   <i class="bi bi-credit-card-fill"></i>
                 </div>
@@ -343,14 +598,8 @@ $activePage = 'customers';
               </div>
             </div>
 
-            <!-- Total Customers Card -->
             <div class="summary-card card-total">
               <div class="card-inner">
-                <!--
-                  TODO: Replace with your icon image or use Bootstrap Icons.
-                  Option A (image): <img class="card-icon" src="pics_icons/Group-494.png" alt="Total" />
-                  Option B (Bootstrap Icons):
-                -->
                 <div class="card-icon-placeholder icon-gray">
                   <i class="bi bi-people-fill"></i>
                 </div>
@@ -363,27 +612,19 @@ $activePage = 'customers';
               </div>
             </div>
 
-          </div><!-- /.cards-row -->
-        </div><!-- /.overview-card -->
+          </div>
+        </div>
       </section>
 
       <!-- ── TABLE SECTION ── -->
       <div class="table-container-wrap">
 
-        <!-- Actions Bar -->
         <div class="table-actions-bar">
           <div class="actions-top-row">
 
-            <!-- Left: search + filters -->
             <div class="actions-left">
               <form method="get" action="customers.php" style="display:contents;">
-                <!-- Search -->
                 <div class="searchbar">
-                  <!--
-                    TODO: Replace the icon below with your magnifying glass icon or use Bootstrap Icons.
-                    Option A (image): <img class="searchbar-icon" src="pics_icons/magnifying-glass.svg" alt="Search" />
-                    Option B (Bootstrap Icons - already included):
-                  -->
                   <i class="bi bi-search searchbar-icon"></i>
                   <input
                     type="text"
@@ -394,38 +635,28 @@ $activePage = 'customers';
                   />
                 </div>
 
-                <!-- Status filter -->
                 <select name="status" class="category-btn" onchange="this.form.submit()" title="Filter by status">
                   <option value="">Category</option>
-                  <option value="pending" <?= $filterStatus === 'pending' ? 'selected' : '' ?>>Partially Paid</option>
-                  <option value="settled" <?= $filterStatus === 'settled' ? 'selected' : '' ?>>Fully Paid</option>
-                  <option value="overdue" <?= $filterStatus === 'overdue' ? 'selected' : '' ?>>Unpaid</option>
+                  <option value="Partially Paid" <?= $filterStatus === 'Partially Paid' ? 'selected' : '' ?>>Partially Paid</option>
+                  <option value="Fully Paid"     <?= $filterStatus === 'Fully Paid'     ? 'selected' : '' ?>>Fully Paid</option>
+                  <option value="Unpaid"         <?= $filterStatus === 'Unpaid'         ? 'selected' : '' ?>>Unpaid</option>
                 </select>
 
                 <button type="submit" style="display:none;"></button>
               </form>
             </div>
 
-            <!-- Right: export + add -->
             <div class="actions-right-group">
-              <!-- Export list -->
               <a href="customers.php?export=csv&search=<?= urlencode($search) ?>&status=<?= urlencode($filterStatus) ?>"
                  class="export-btn">
-                <!--
-                  TODO: Replace with your export icon or use Bootstrap Icons.
-                  Option A (image): <img src="pics_icons/file-export.svg" alt="" style="width:18px;height:18px;" />
-                  Option B:
-                -->
                 <i class="bi bi-file-earmark-arrow-down"></i>
                 Export list
               </a>
-
-              
+            </div>
 
           </div>
-        </div><!-- /.table-actions-bar -->
+        </div>
 
-        <!-- Table -->
         <div class="table-view-wrapper">
           <table class="customers-table">
             <thead>
@@ -444,26 +675,18 @@ $activePage = 'customers';
                 </tr>
               <?php else: ?>
                 <?php foreach ($customers as $row):
-                  $info   = statusInfo($row['status'] ?? 'pending');
+                  $info    = statusInfo($row['status'] ?? 'Unpaid');
                   $hasDate = !empty($row['settlement_date']);
                 ?>
                 <tr>
-                  <!-- Customer Name -->
                   <td class="col-name"><?= htmlspecialchars($row['customer_name']) ?></td>
 
-                  <!-- Money Owed -->
-                  <td>₱ <?= number_format((float)$row['amount_owed'], 0) ?></td>
+                  <td>₱ <?= number_format((float)$row['amount_owed'], 2) ?></td>
 
-                  <!-- Settlement Date -->
                   <td class="col-date">
                     <?php if ($hasDate): ?>
                       <div class="date-cell">
                         <?= htmlspecialchars(date('m/d/y', strtotime($row['settlement_date']))) ?>
-                        <!--
-                          TODO: Replace with your calendar icon or use Bootstrap Icons.
-                          Option A (image): <img src="pics_icons/uiw-date.svg" alt="" style="width:18px;height:18px;" />
-                          Option B:
-                        -->
                         <i class="bi bi-calendar3"></i>
                       </div>
                     <?php else: ?>
@@ -471,42 +694,36 @@ $activePage = 'customers';
                     <?php endif; ?>
                   </td>
 
-                  <!-- Status -->
                   <td class="col-status">
                     <span class="status-badge <?= $info['class'] ?>">
                       <?= $info['label'] ?>
                     </span>
                   </td>
 
-                  <!-- Actions -->
                   <td class="col-actions">
                     <div class="actions-cell">
-                      <!-- View / Edit -->
                       <button
                         class="action-icon-btn btn-view"
                         title="View / Edit"
                         onclick="openEditModal(
-                          <?= (int)$row['credit_id'] ?>,
-                          <?= (float)$row['amount_owed'] ?>,
-                          '<?= htmlspecialchars($row['settlement_date'] ?? '') ?>',
-                          '<?= htmlspecialchars($row['status'] ?? 'pending') ?>'
+                          <?= (int)   $row['credit_id']    ?>,
+                          <?= (int)   $row['customer_id']  ?>,
+                          '<?= htmlspecialchars($row['customer_name'],               ENT_QUOTES) ?>',
+                          '<?= htmlspecialchars($row['contact_number'] ?? '',        ENT_QUOTES) ?>',
+                          <?= (float) $row['amount_owed']  ?>,
+                          <?= (float) ($row['original_amount'] ?? $row['amount_owed']) ?>,
+                          '<?= htmlspecialchars($row['settlement_date'] ?? '',       ENT_QUOTES) ?>',
+                          '<?= htmlspecialchars($row['status']          ?? 'Unpaid', ENT_QUOTES) ?>'
                         )"
                       >
-                        <!--
-                          TODO: Replace with your view icon or Bootstrap Icons (bi-eye).
-                        -->
                         <i class="bi bi-eye"></i>
                       </button>
 
-                      <!-- Delete -->
                       <button
                         class="action-icon-btn btn-delete"
                         title="Delete customer"
                         onclick="openDeleteModal(<?= (int)$row['customer_id'] ?>, '<?= htmlspecialchars($row['customer_name'], ENT_QUOTES) ?>')"
                       >
-                        <!--
-                          TODO: Replace with your trash icon or Bootstrap Icons (bi-trash).
-                        -->
                         <i class="bi bi-trash"></i>
                       </button>
                     </div>
@@ -516,22 +733,15 @@ $activePage = 'customers';
               <?php endif; ?>
             </tbody>
           </table>
-        </div><!-- /.table-view-wrapper -->
+        </div>
 
-        <!-- Pagination -->
         <footer class="pagination-area">
           <?php if ($currentPage > 1): ?>
             <a href="<?= pageUrl($currentPage - 1, $search, $filterStatus) ?>" class="page-btn">
-              <!--
-                TODO: Replace with your left arrow icon or Bootstrap Icons (bi-arrow-left).
-              -->
-              <i class="bi bi-arrow-left"></i>
-              Prev
+              <i class="bi bi-arrow-left"></i> Prev
             </a>
           <?php else: ?>
-            <button class="page-btn" disabled>
-              <i class="bi bi-arrow-left"></i> Prev
-            </button>
+            <button class="page-btn" disabled><i class="bi bi-arrow-left"></i> Prev</button>
           <?php endif; ?>
 
           <span style="font-size:var(--fs-14);color:var(--1-brown);font-family:var(--font-inter);">
@@ -540,91 +750,123 @@ $activePage = 'customers';
 
           <?php if ($currentPage < $totalPages): ?>
             <a href="<?= pageUrl($currentPage + 1, $search, $filterStatus) ?>" class="page-btn">
-              Next
-              <!--
-                TODO: Replace with your right arrow icon or Bootstrap Icons (bi-arrow-right).
-              -->
-              <i class="bi bi-arrow-right"></i>
+              Next <i class="bi bi-arrow-right"></i>
             </a>
           <?php else: ?>
-            <button class="page-btn" disabled>
-              Next <i class="bi bi-arrow-right"></i>
-            </button>
+            <button class="page-btn" disabled>Next <i class="bi bi-arrow-right"></i></button>
           <?php endif; ?>
         </footer>
 
-      </div><!-- /.table-container-wrap -->
-
-    </main><!-- /.main-body -->
-  </div><!-- /.page-container -->
-</div><!-- /.customer-page -->
-
-
-<!-- ============================================================
-     MODAL: ADD CUSTOMER
-     ============================================================ -->
-<div class="modal-overlay" id="addModal">
-  <div class="modal-box">
-    <h2 class="modal-title">Add New Customer</h2>
-    <form method="post" action="customers.php">
-      <input type="hidden" name="action" value="add" />
-
-      <div class="modal-form-group">
-        <label class="modal-label" for="add_customer_name">Customer Name</label>
-        <input class="modal-input" type="text" id="add_customer_name" name="customer_name"
-               placeholder="e.g. Juan dela Cruz" required />
       </div>
 
-      <div class="modal-form-group" style="margin-top:12px;">
-        <label class="modal-label" for="add_amount_owed">Amount Owed (₱)</label>
-        <input class="modal-input" type="number" id="add_amount_owed" name="amount_owed"
-               placeholder="0.00" min="0.01" step="0.01" required />
-      </div>
-
-      <div class="modal-form-group" style="margin-top:12px;">
-        <label class="modal-label" for="add_settlement_date">Settlement Date <span style="font-weight:400;opacity:.6;">(optional)</span></label>
-        <input class="modal-input" type="date" id="add_settlement_date" name="settlement_date" />
-      </div>
-
-      
-    </form>
+    </main>
   </div>
 </div>
 
 
 <!-- ============================================================
-     MODAL: EDIT / VIEW CREDIT
+     MODAL: EDIT CUSTOMER
      ============================================================ -->
 <div class="modal-overlay" id="editModal">
-  <div class="modal-box">
-    <h2 class="modal-title">Edit Credit Record</h2>
-    <form method="post" action="customers.php">
-      <input type="hidden" name="action"    value="update" />
-      <input type="hidden" name="credit_id" id="edit_credit_id" />
+  <div class="modal-box edit-customer-box">
 
-      <div class="modal-form-group">
-        <label class="modal-label" for="edit_amount_owed">Amount Owed (₱)</label>
-        <input class="modal-input" type="number" id="edit_amount_owed" name="amount_owed"
-               placeholder="0.00" min="0" step="0.01" required />
-      </div>
+    <div class="ec-header">
+      <h2 class="ec-title">Edit Customer</h2>
+      <button type="button" class="ec-close-btn" onclick="closeModal('editModal')">&#x2715;</button>
+    </div>
 
-      <div class="modal-form-group" style="margin-top:12px;">
-        <label class="modal-label" for="edit_settlement_date">Settlement Date <span style="font-weight:400;opacity:.6;">(optional)</span></label>
-        <input class="modal-input" type="date" id="edit_settlement_date" name="settlement_date" />
-      </div>
+    <form method="post" action="customers.php" id="editCustomerForm">
+      <input type="hidden" name="action"      value="update_customer" />
+      <input type="hidden" name="credit_id"   id="edit_credit_id" />
+      <input type="hidden" name="customer_id" id="edit_customer_id" />
 
-      <div class="modal-form-group" style="margin-top:12px;">
-        <label class="modal-label" for="edit_status">Status</label>
-        <select class="modal-select" id="edit_status" name="status">
-          <option value="pending">Partially Paid</option>
-          <option value="settled">Fully Paid</option>
-          <option value="overdue">Unpaid</option>
-        </select>
-      </div>
+      <div class="ec-form-wrap">
 
-      <div class="modal-footer" style="margin-top:16px;">
-        <button type="button" class="modal-btn btn-cancel" onclick="closeModal('editModal')">Cancel</button>
-        <button type="submit" class="modal-btn btn-primary">Save Changes</button>
+        <!-- Customer Name -->
+        <div class="ec-field">
+          <label class="ec-label">Customer Name</label>
+          <div class="ec-input-wrap">
+            <input class="ec-input" type="text" name="customer_name" id="edit_customer_name"
+                   placeholder="Customer name" required />
+          </div>
+        </div>
+
+        <!-- Contact Information -->
+        <div class="ec-field">
+          <label class="ec-label">Contact Information</label>
+          <div class="ec-input-wrap ec-textarea-wrap">
+            <input class="ec-input" type="text" name="contact_address" id="edit_contact_address"
+                   placeholder="Address" />
+            <input class="ec-input ec-input-border-top" type="text" name="contact_number" id="edit_contact_number"
+                   placeholder="Contact number" />
+          </div>
+        </div>
+
+        <!-- Amount Owed (read-only display) -->
+        <div class="ec-field">
+          <label class="ec-label">Remaining Balance</label>
+          <div class="ec-input-wrap ec-peso-wrap">
+            <span class="ec-peso">&#8369;</span>
+            <input class="ec-input ec-input-pl" type="number" name="amount_owed" id="edit_amount_owed"
+                   placeholder="0" min="0" step="0.01" readonly
+                   style="opacity:0.7;cursor:not-allowed;" />
+          </div>
+          <p class="ec-balance-preview">
+            Original debt: ₱<span id="edit_original_display">0.00</span>
+            &nbsp;·&nbsp; After payment: ₱<span id="edit_after_display">—</span>
+          </p>
+        </div>
+
+        <!-- Settlement Date | Status | Amount Paid -->
+        <div class="ec-row-3">
+
+          <div class="ec-field">
+            <label class="ec-label">Settlement Date</label>
+            <div class="ec-input-wrap ec-date-wrap">
+              <i class="bi bi-calendar3 ec-cal-icon"></i>
+              <input class="ec-input ec-input-pl" type="date" name="settlement_date" id="edit_settlement_date" />
+            </div>
+          </div>
+
+          <div class="ec-field">
+            <label class="ec-label">Status</label>
+            <div class="ec-input-wrap ec-status-wrap" id="ec_status_display">
+              <select class="ec-select-status" name="status" id="edit_status"
+                      onchange="ecUpdateStatusDisplay(this); ecAutoFillOnFullyPaid();">
+                <option value="Unpaid">Unpaid</option>
+                <option value="Partially Paid">Partially Paid</option>
+                <option value="Fully Paid">Fully Paid</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="ec-field">
+            <label class="ec-label">Amount Paid</label>
+            <div class="ec-input-wrap ec-peso-wrap">
+              <span class="ec-peso">&#8369;</span>
+              <input class="ec-input ec-input-pl" type="number" name="amount_paid" id="edit_amount_paid"
+                     placeholder="0" min="0" step="0.01"
+                     oninput="ecUpdateAfterBalance()" />
+            </div>
+          </div>
+
+        </div>
+
+        <!-- Additional Notes -->
+        <div class="ec-field">
+          <label class="ec-label">Additional Notes</label>
+          <div class="ec-input-wrap">
+            <textarea class="ec-textarea" name="notes" id="edit_notes"
+                      placeholder="Enter Here"></textarea>
+          </div>
+        </div>
+
+        <!-- Footer -->
+        <div class="ec-footer">
+          <button type="button" class="ec-btn-cancel" onclick="closeModal('editModal')">Cancel</button>
+          <button type="submit" class="ec-btn-update">Update</button>
+        </div>
+
       </div>
     </form>
   </div>
@@ -658,54 +900,116 @@ $activePage = 'customers';
      ============================================================ -->
 <script>
   /* ── Modal helpers ── */
-  function openModal(id) {
-    document.getElementById(id).classList.add('active');
-  }
+  function openModal(id)  { document.getElementById(id).classList.add('active'); }
+  function closeModal(id) { document.getElementById(id).classList.remove('active'); }
 
-  function closeModal(id) {
-    document.getElementById(id).classList.remove('active');
-  }
-
-  /* Close modal on overlay click */
   document.querySelectorAll('.modal-overlay').forEach(function(overlay) {
     overlay.addEventListener('click', function(e) {
       if (e.target === overlay) overlay.classList.remove('active');
     });
   });
 
-  /* ── Open Edit Modal with pre-filled data ── */
-  function openEditModal(creditId, amountOwed, settlementDate, status) {
-    document.getElementById('edit_credit_id').value       = creditId;
-    document.getElementById('edit_amount_owed').value     = amountOwed;
+  /* Tracks the current remaining balance for live calculation */
+  var _currentBalance  = 0;
+  var _originalAmount  = 0;
+
+  /* ── Open Edit Customer Modal ── */
+  function openEditModal(creditId, customerId, customerName, contactNumber,
+                         remainingBalance, originalAmount, settlementDate, status) {
+
+    _currentBalance = remainingBalance;
+    _originalAmount = originalAmount;
+
+    document.getElementById('edit_credit_id').value   = creditId;
+    document.getElementById('edit_customer_id').value = customerId;
+    document.getElementById('edit_customer_name').value = customerName;
+
+    /* Split "address || phone" */
+    var parts = (contactNumber || '').split('||');
+    document.getElementById('edit_contact_address').value = parts[0] ? parts[0].trim() : '';
+    document.getElementById('edit_contact_number').value  = parts[1] ? parts[1].trim() : '';
+
+    /* Remaining balance (read-only) */
+    document.getElementById('edit_amount_owed').value = remainingBalance.toFixed(2);
+
+    /* Preview labels */
+    document.getElementById('edit_original_display').textContent =
+      parseFloat(originalAmount).toLocaleString('en-PH', {minimumFractionDigits:2, maximumFractionDigits:2});
+    document.getElementById('edit_after_display').textContent = '—';
+
     document.getElementById('edit_settlement_date').value = settlementDate;
-    document.getElementById('edit_status').value          = status;
+    document.getElementById('edit_amount_paid').value     = '';
+    document.getElementById('edit_notes').value           = '';
+
+    var sel = document.getElementById('edit_status');
+    sel.value = status;
+    ecUpdateStatusDisplay(sel);
+
     openModal('editModal');
+  }
+
+  /* ── Live balance preview as user types amount paid ── */
+  function ecUpdateAfterBalance() {
+    var paid  = parseFloat(document.getElementById('edit_amount_paid').value) || 0;
+    var after = _currentBalance - paid;
+    var el    = document.getElementById('edit_after_display');
+
+    if (paid <= 0) {
+      el.textContent = '—';
+      el.style.color = '';
+    } else if (after < 0) {
+      el.textContent = 'Exceeds balance!';
+      el.style.color = '#cc0000';
+    } else {
+      el.textContent = after.toLocaleString('en-PH', {minimumFractionDigits:2, maximumFractionDigits:2});
+      el.style.color = after === 0 ? '#159459' : '#e6a817';
+
+      /* Auto-set status */
+      var sel = document.getElementById('edit_status');
+      sel.value = (after === 0) ? 'Fully Paid' : 'Partially Paid';
+      ecUpdateStatusDisplay(sel);
+    }
+  }
+
+  /* ── When status is set to Fully Paid, auto-fill payment = remaining ── */
+  function ecAutoFillOnFullyPaid() {
+    var sel = document.getElementById('edit_status');
+    if (sel.value === 'Fully Paid') {
+      document.getElementById('edit_amount_paid').value = _currentBalance.toFixed(2);
+      ecUpdateAfterBalance();
+    }
+  }
+
+  /* ── Colour the Status select based on value ── */
+  function ecUpdateStatusDisplay(sel) {
+    var wrap = document.getElementById('ec_status_display');
+    wrap.classList.remove('ec-status-unpaid', 'ec-status-partial', 'ec-status-paid');
+    if      (sel.value === 'Unpaid')         wrap.classList.add('ec-status-unpaid');
+    else if (sel.value === 'Partially Paid') wrap.classList.add('ec-status-partial');
+    else if (sel.value === 'Fully Paid')     wrap.classList.add('ec-status-paid');
   }
 
   /* ── Open Delete Modal ── */
   function openDeleteModal(customerId, customerName) {
-    document.getElementById('delete_customer_id').value    = customerId;
+    document.getElementById('delete_customer_id').value         = customerId;
     document.getElementById('delete_customer_name').textContent = customerName;
     openModal('deleteModal');
   }
 
-  /* ── Live search (optional: auto-submit on input after short delay) ── */
+  /* ── Live search ── */
   (function() {
     var searchInput = document.querySelector('.searchbar input[name="search"]');
     if (!searchInput) return;
     var timer;
     searchInput.addEventListener('input', function() {
       clearTimeout(timer);
-      timer = setTimeout(function() {
-        searchInput.closest('form').submit();
-      }, 400);
+      timer = setTimeout(function() { searchInput.closest('form').submit(); }, 400);
     });
   })();
 
-  /* ── Auto-dismiss flash messages after 4 s ── */
+  /* ── Auto-dismiss flash messages ── */
   setTimeout(function() {
-    var msgs = document.querySelectorAll('.flash-msg');
-    msgs.forEach(function(m) {
+    document.querySelectorAll('.flash-msg').forEach(function(m) {
       m.style.transition = 'opacity .5s';
       m.style.opacity    = '0';
       setTimeout(function() { m.remove(); }, 500);

@@ -48,43 +48,17 @@ $activePage = 'pos';
   <link rel="stylesheet" href="pos.css"/>
 
   <style>
-    /*
-     * Inline fixes for the three bugs:
-     *
-     * 1. Expired products — handled in SQL (see PHP above).
-     *
-     * 2. Scroll — .table-wrap must clip its content and allow
-     *    vertical overflow so the scrollbar appears when there
-     *    are more rows than the visible area can hold.
-     *    We only override the properties that fix the bug;
-     *    everything else continues to come from pos.css.
-     *
-     * 3. Pagination — .tbody-row default display is restored
-     *    to 'flex' by JS (not '' which is browser-default and
-     *    may collapse rows depending on pos.css).  The CSS rule
-     *    below makes the intent explicit so both '' and 'flex'
-     *    produce the same result.
-     */
-
-    /* Scrollable table body */
     .table-wrap {
-      overflow-x: auto;   /* horizontal scroll for narrow viewports */
-      overflow-y: auto;   /* vertical scroll when rows exceed height */
-    }
-
-    /* Give the inner scroll area a defined max-height so the
-       scrollbar actually appears instead of expanding forever. */
-    .table-inner {
-      max-height: 480px;  /* adjust to taste / match pos.css value */
+      overflow-x: auto;
       overflow-y: auto;
     }
-
-    /* Ensure every tbody row is a flex row so that restoring
-       display:'' and display:'flex' are equivalent. */
+    .table-inner {
+      max-height: 480px;
+      overflow-y: auto;
+    }
     #pos-tbody .tbody-row {
       display: flex;
-      flex-direction: column; /* matches the original markup that
-                                  wraps content in .tbody-row-content */
+      flex-direction: column;
     }
   </style>
 </head>
@@ -305,13 +279,10 @@ var payMethod   = 'cash';
 var currentPage = 1;
 var ROWS_PER_PAGE = 10;
 
-/* The display value to RESTORE when un-hiding a row.
-   pos.css defines .tbody-row as a block/flex container.
-   Using an explicit value instead of '' avoids any ambiguity
-   about the browser's own default for a <div>. */
-var ROW_DISPLAY_SHOW = 'flex'; // must match pos.css .tbody-row display value
+var ROW_DISPLAY_SHOW = 'flex';
 
 var tbody         = document.getElementById('pos-tbody');
+var searchInput   = document.getElementById('search-input');   // FIX 1: keep a ref
 var displayTotal  = document.getElementById('display-total');
 var displayItems  = document.getElementById('display-items');
 var inputTendered = document.getElementById('input-tendered');
@@ -374,7 +345,7 @@ tbody.addEventListener('click', function(e) {
   if (trashBtn) {
     var row = trashBtn.closest('.tbody-row');
     row.querySelector('.qty-val').textContent = '0';
-    row.dataset.hidden = '1';   /* mark as removed; renderPage will hide it */
+    row.dataset.hidden = '1';
     updateSummary();
     renderPage();
   }
@@ -384,12 +355,19 @@ inputTendered.addEventListener('input', updateSummary);
 
 /* ─────────────────────────────────────────────────────────────
    Clear
+   FIX 1: also clear the search input value and reset all
+   data-hidden flags so previously search-filtered rows reappear.
 ───────────────────────────────────────────────────────────── */
 document.getElementById('btn-clear').addEventListener('click', function() {
+  // Reset all rows — qty back to 0, visibility restored
   tbody.querySelectorAll('.tbody-row').forEach(function(row) {
     row.querySelector('.qty-val').textContent = '0';
-    row.dataset.hidden = '';   /* restore: empty string = visible */
+    row.dataset.hidden = '';   // restore all rows (including trash-removed ones)
   });
+
+  // FIX 1: clear the search box so the filter is fully reset
+  searchInput.value = '';
+
   inputTendered.value = '';
   currentPage = 1;
   updateSummary();
@@ -453,6 +431,8 @@ function resetPOS() {
     row.querySelector('.qty-val').textContent = '0';
     row.dataset.hidden = '';
   });
+  // FIX 1: clear search on full reset too
+  searchInput.value = '';
   inputTendered.value = '';
   payMethod = 'cash';
   selectPayMethod('cash');
@@ -502,10 +482,11 @@ document.getElementById('btn-checkout').addEventListener('click', function() {
     openCustModal();
   } else {
     var change = Math.max(0, tendered - total);
+    var payLabel = payMethod === 'gcash' ? 'G-CASH' : 'CASH';
     var msg = [
       'TOTAL:    ₱' + total.toFixed(2),
       'ITEMS:    ' + items,
-      'PAYMENT:  ' + payMethod.toUpperCase(),
+      'PAYMENT:  ' + payLabel,
       'TENDERED: ₱' + tendered.toFixed(2),
       'CHANGE:   ₱' + change.toFixed(2),
       '', 'Proceed with checkout?'
@@ -515,7 +496,9 @@ document.getElementById('btn-checkout').addEventListener('click', function() {
 });
 
 /* ─────────────────────────────────────────────────────────────
-   Cash sale submission
+   Cash / G-Cash sale submission
+   FIX 2: pass pay_method ('cash' or 'gcash') to the server
+   so it can be stored separately in the Sale table.
 ───────────────────────────────────────────────────────────── */
 function submitCashSale(total, tendered, change) {
   var cartItems   = buildCart();
@@ -528,7 +511,7 @@ function submitCashSale(total, tendered, change) {
     headers: { 'Content-Type': 'application/json' },
     body:    JSON.stringify({
       type:       'cash',
-      pay_method: payMethod,
+      pay_method: payMethod,   // 'cash' or 'gcash' — server stores this
       items:      cartItems,
       total:      total,
       tendered:   tendered,
@@ -644,14 +627,12 @@ function submitUtangSale(custName, custAddress, custContact, custNotes) {
 /* ─────────────────────────────────────────────────────────────
    Search filter
 ───────────────────────────────────────────────────────────── */
-document.getElementById('search-input').addEventListener('input', function() {
+searchInput.addEventListener('input', function() {
   var q = this.value.toLowerCase().trim();
   tbody.querySelectorAll('.tbody-row').forEach(function(row) {
     var name = (row.querySelector('.col-name-val') || {}).textContent || '';
     var sku  = (row.querySelector('.col-sku-val')  || {}).textContent || '';
-    /* Mark filtered-out rows with 'search' so trash-removed rows
-       (data-hidden='1') are not accidentally un-hidden by a new search. */
-    if (row.dataset.hidden === '1') return;   /* already trash-removed, skip */
+    if (row.dataset.hidden === '1') return;   // already trash-removed, skip
     row.dataset.hidden = (q && !name.toLowerCase().includes(q) && !sku.toLowerCase().includes(q)) ? 'search' : '';
   });
   currentPage = 1;
@@ -660,18 +641,10 @@ document.getElementById('search-input').addEventListener('input', function() {
 
 /* ─────────────────────────────────────────────────────────────
    Pagination
-   ─────────────────────────────────────────────────────────────
-   VISIBLE definition:
-     data-hidden === ''     → available, not filtered
-     data-hidden === 'search' → hidden by search filter
-     data-hidden === '1'    → removed by trash button
-   Only rows with data-hidden === '' are shown.
-   All others are hidden regardless of page.
 ───────────────────────────────────────────────────────────── */
 function renderPage() {
   var allRows = Array.from(tbody.querySelectorAll('.tbody-row'));
 
-  /* Rows that pass all filters (not trashed, not search-filtered) */
   var visible = allRows.filter(function(r) {
     return r.dataset.hidden === '';
   });
@@ -679,29 +652,22 @@ function renderPage() {
   var total   = visible.length;
   var maxPage = Math.max(1, Math.ceil(total / ROWS_PER_PAGE));
 
-  /* Clamp currentPage to valid range */
   if (currentPage < 1)       currentPage = 1;
   if (currentPage > maxPage) currentPage = maxPage;
 
   var start = (currentPage - 1) * ROWS_PER_PAGE;
   var end   = start + ROWS_PER_PAGE;
 
-  /* First hide every row (handles search-filtered + trashed + off-page) */
   allRows.forEach(function(r) {
     r.style.display = 'none';
   });
 
-  /* Then show only the current page's slice of visible rows.
-     Restore to ROW_DISPLAY_SHOW ('flex') — not '' — to guarantee
-     the row renders correctly regardless of what the browser's
-     own default is for a <div>. */
   visible.forEach(function(r, i) {
     if (i >= start && i < end) {
       r.style.display = ROW_DISPLAY_SHOW;
     }
   });
 
-  /* Update button states */
   var btnPrev = document.getElementById('btn-prev');
   var btnNext = document.getElementById('btn-next');
   btnPrev.disabled = (currentPage <= 1);

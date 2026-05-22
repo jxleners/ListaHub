@@ -35,6 +35,30 @@
 --    Inventory_Log 'out' entry, so the loss appears
 --    automatically in every report that reads either table.
 --
+--  BUG 3 (G-Cash not tracked separately from Cash):
+--    Sale.payment_method ENUM was ('cash','credit') only.
+--    G-Cash payments were either rejected or stored as 'cash',
+--    making it impossible to report Online Sales vs Cash Sales
+--    separately in the Sales page.
+--
+--    FIX: Added 'gcash' to the ENUM so the column is now
+--    ENUM('cash','gcash','credit'). sp_process_cash_sale now
+--    accepts p_pay_method IN parameter and passes it through
+--    to the INSERT. vw_daily_sales_summary now breaks out
+--    gcash_sales separately. A new vw_payment_method_summary
+--    view is added for the Sales page widgets.
+--
+--  BUG 4 (customers.php reads wrong tables):
+--    customers.php was querying a legacy schema (tables named
+--    `customers` and `customer_credits`) that does not exist
+--    in this database. The correct tables written to by
+--    sp_process_credit_sale are Customer and Debt.
+--    customers.php must query Customer + Sale + Debt +
+--    Debt_Payment — the replacement PHP code is documented
+--    in the project notes. The schema here exposes all needed
+--    data through vw_customer_outstanding (unchanged) plus
+--    the new vw_customer_debt_detail view added below.
+--
 --  ALL PREVIOUS DESIGN DECISIONS RETAINED:
 --    • Sale_Item FK ON DELETE SET NULL  (preserves history)
 --    • Expired_Loss_Log table           (financial write-off)
@@ -73,12 +97,6 @@ INSERT INTO Category (category_name) VALUES ('Uncategorized');
 
 -- ============================================================
 --  SKU SEQUENCE HELPER  (BUG 1 FIX)
---
---  A tiny single-row table whose AUTO_INCREMENT we bump inside
---  the BEFORE INSERT trigger using INSERT + LAST_INSERT_ID().
---  This gives us the true next id without querying
---  information_schema (which can be stale mid-transaction and
---  requires extra privileges in some MySQL configurations).
 -- ============================================================
 CREATE TABLE sku_seq (
     seq_id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY
@@ -120,8 +138,8 @@ CREATE TABLE Product (
 
 CREATE TABLE Inventory_Log (
     log_id            INT UNSIGNED    AUTO_INCREMENT PRIMARY KEY,
-    product_id        INT UNSIGNED    NULL,           -- nullable: product may be deleted later
-    product_name_snap VARCHAR(100)    NOT NULL DEFAULT '', -- snapshot so log survives product deletion
+    product_id        INT UNSIGNED    NULL,
+    product_name_snap VARCHAR(100)    NOT NULL DEFAULT '',
     movement_type     ENUM('in','out') NOT NULL,
     quantity_change   INT             NOT NULL,
     stock_before      INT             NOT NULL,
@@ -143,15 +161,10 @@ CREATE TABLE Inventory_Log (
         REFERENCES Product(product_id) ON UPDATE CASCADE ON DELETE SET NULL
 ) ENGINE=InnoDB;
 
--- ============================================================
---  Expired_Loss_Log — records financial impact when an expired
---  product is deleted. Reports subtract total_cost_lost from
---  net profit to show the real business loss.
--- ============================================================
 CREATE TABLE Expired_Loss_Log (
     loss_id          INT UNSIGNED   AUTO_INCREMENT PRIMARY KEY,
     user_id          INT UNSIGNED   NOT NULL,
-    product_id       INT UNSIGNED   NULL,            -- nullable: snapshot survives deletion
+    product_id       INT UNSIGNED   NULL,
     product_name     VARCHAR(100)   NOT NULL,
     sku              VARCHAR(50)    NOT NULL DEFAULT '',
     quantity_lost    INT            NOT NULL,
@@ -162,9 +175,9 @@ CREATE TABLE Expired_Loss_Log (
     deleted_at       DATETIME       NOT NULL DEFAULT CURRENT_TIMESTAMP,
     notes            TEXT           NULL,
 
-    CONSTRAINT chk_qty_lost  CHECK (quantity_lost  > 0),
-    CONSTRAINT chk_exp_cost  CHECK (cost_price     >= 0),
-    CONSTRAINT chk_exp_retail CHECK (retail_price  >= 0),
+    CONSTRAINT chk_qty_lost   CHECK (quantity_lost  > 0),
+    CONSTRAINT chk_exp_cost   CHECK (cost_price     >= 0),
+    CONSTRAINT chk_exp_retail CHECK (retail_price   >= 0),
 
     CONSTRAINT fk_loss_user FOREIGN KEY (user_id)
         REFERENCES User(user_id) ON UPDATE CASCADE ON DELETE CASCADE,
@@ -206,10 +219,19 @@ CREATE TABLE Customer (
     CONSTRAINT chk_outstanding CHECK (total_outstanding >= 0)
 ) ENGINE=InnoDB;
 
+-- ============================================================
+--  Sale — BUG 3 FIX:
+--  payment_method ENUM now includes 'gcash' so G-Cash
+--  transactions are stored separately from plain 'cash'.
+--  This allows the Sales page to display:
+--    • Cash Sales  (payment_method = 'cash')
+--    • Online Sales / G-Cash  (payment_method = 'gcash')
+--    • Credit / Utang  (payment_method = 'credit')
+-- ============================================================
 CREATE TABLE Sale (
     sale_id          INT UNSIGNED   AUTO_INCREMENT PRIMARY KEY,
     customer_id      INT UNSIGNED   NULL,
-    payment_method   ENUM('cash','credit') NOT NULL,
+    payment_method   ENUM('cash','gcash','credit') NOT NULL,  -- BUG 3 FIX: added 'gcash'
     total_amount     DECIMAL(12,2)  NOT NULL DEFAULT 0.00,
     amount_tendered  DECIMAL(12,2)  NULL,
     change_given     DECIMAL(12,2)  NULL,
@@ -229,10 +251,9 @@ CREATE TABLE Sale (
 CREATE TABLE Sale_Item (
     sale_item_id       INT UNSIGNED   AUTO_INCREMENT PRIMARY KEY,
     sale_id            INT UNSIGNED   NOT NULL,
-    -- ON DELETE SET NULL so historical sale records survive product deletion
     product_id         INT UNSIGNED   NULL,
-    product_name_snap  VARCHAR(100)   NOT NULL DEFAULT '', -- snapshot at time of sale
-    sku_snap           VARCHAR(50)    NOT NULL DEFAULT '', -- snapshot at time of sale
+    product_name_snap  VARCHAR(100)   NOT NULL DEFAULT '',
+    sku_snap           VARCHAR(50)    NOT NULL DEFAULT '',
     quantity_sold      INT            NOT NULL,
     unit_price_at_sale DECIMAL(10,2)  NOT NULL DEFAULT 0.00,
     unit_cost_at_sale  DECIMAL(10,2)  NOT NULL DEFAULT 0.00,
@@ -288,6 +309,7 @@ CREATE INDEX idx_product_user        ON Product(user_id);
 CREATE INDEX idx_invlog_product_date ON Inventory_Log(product_id, log_date);
 CREATE INDEX idx_sale_customer       ON Sale(customer_id);
 CREATE INDEX idx_sale_date           ON Sale(sale_date);
+CREATE INDEX idx_sale_payment        ON Sale(payment_method);   -- BUG 3 FIX: index for payment filter
 CREATE INDEX idx_debtpayment_debt    ON Debt_Payment(debt_id);
 CREATE INDEX idx_loss_user           ON Expired_Loss_Log(user_id);
 CREATE INDEX idx_loss_deleted_at     ON Expired_Loss_Log(deleted_at);
@@ -301,8 +323,7 @@ DELIMITER $$
 
 -- -----------------------------------------------------------
 --  TRIGGER 0 — BEFORE INSERT on Sale_Item:
---  Snapshot product name + SKU so historical records survive
---  product deletion.
+--  Snapshot product name + SKU.
 -- -----------------------------------------------------------
 CREATE TRIGGER trg_sale_item_before_insert
 BEFORE INSERT ON Sale_Item
@@ -323,17 +344,7 @@ BEGIN
 END$$
 
 -- -----------------------------------------------------------
---  TRIGGER 1 — BEFORE INSERT on Product:
---  Generate SKU + compute correct status.
---
---  BUG 1 FIX:
---  Instead of reading information_schema.AUTO_INCREMENT
---  (stale mid-transaction, needs extra privileges) we INSERT
---  a dummy row into the sku_seq helper table and read its
---  LAST_INSERT_ID(). This gives us an always-incrementing,
---  collision-free sequence number in one atomic step.
---  The old AFTER INSERT trigger that UPDATE'd Product is gone —
---  that was the source of ERROR 1442.
+--  TRIGGER 1 — BEFORE INSERT on Product: Generate SKU + status.
 -- -----------------------------------------------------------
 CREATE TRIGGER trg_product_before_insert
 BEFORE INSERT ON Product
@@ -342,18 +353,14 @@ BEGIN
     DECLARE v_seq_id   BIGINT UNSIGNED;
     DECLARE v_prefix   VARCHAR(3);
 
-    -- Atomically claim the next sequence number
     INSERT INTO sku_seq () VALUES ();
     SET v_seq_id = LAST_INSERT_ID();
 
-    -- Build the SKU: first 3 alpha chars of product name + 6-digit seq
     SET v_prefix = UPPER(LEFT(REGEXP_REPLACE(NEW.product_name, '[^A-Za-z]', ''), 3));
-    -- Fallback if product name has fewer than 3 letters
     IF LENGTH(v_prefix) = 0 THEN SET v_prefix = 'PRD'; END IF;
 
     SET NEW.sku = CONCAT(v_prefix, LPAD(v_seq_id, 6, '0'));
 
-    -- Compute status
     IF NEW.quantity = 0 THEN
         SET NEW.status = 'Out of Stock';
     ELSEIF NEW.expiration_date IS NOT NULL AND NEW.expiration_date < CURDATE() THEN
@@ -369,15 +376,7 @@ BEGIN
 END$$
 
 -- -----------------------------------------------------------
---  NOTE: trg_product_sku_after_insert has been REMOVED.
---  It caused ERROR 1442 (updating 'Product' inside an AFTER
---  INSERT trigger on 'Product') which silently rolled back
---  every INSERT and surfaced as "database error" in PHP.
--- -----------------------------------------------------------
-
--- -----------------------------------------------------------
---  TRIGGER 2 — BEFORE UPDATE on Product:
---  Recompute status on any change.
+--  TRIGGER 2 — BEFORE UPDATE on Product: Recompute status.
 -- -----------------------------------------------------------
 CREATE TRIGGER trg_product_status_update
 BEFORE UPDATE ON Product
@@ -398,48 +397,24 @@ BEGIN
 END$$
 
 -- -----------------------------------------------------------
---  TRIGGER 3 — BEFORE DELETE on Product:
---
---  BUG 2 FIX — Expired deletion deducts from general sales:
---  The original version checked OLD.status = 'Expired', but
---  status is only updated when a row is edited; a product
---  whose date passed overnight without an edit still shows
---  its old status. We now check OLD.expiration_date directly
---  so the trigger fires correctly regardless of whether the
---  status column was ever refreshed.
---
---  When an expired product with stock > 0 is deleted:
---    1. Inserts into Expired_Loss_Log  → financial write-off
---       (total_cost_lost & total_value_lost are auto-computed
---        generated columns — reports subtract these from profit)
---    2. Inserts into Inventory_Log     → stock-out movement
---       (movement_type='out', reference_type='expired_deletion',
---        adjustment_reason='Expired Items')
---
---  Both records survive the product deletion because their
---  product_id FK is ON DELETE SET NULL — the snapshot columns
---  (product_name, sku) preserve the data for reporting.
+--  TRIGGER 3 — BEFORE DELETE on Product: Log expired losses.
 -- -----------------------------------------------------------
 CREATE TRIGGER trg_product_before_delete
 BEFORE DELETE ON Product
 FOR EACH ROW
 BEGIN
-    -- Check expiry date directly (not status) so stale-status
-    -- products are caught even if they were never re-saved
     DECLARE v_is_expired TINYINT DEFAULT 0;
 
     IF OLD.expiration_date IS NOT NULL AND OLD.expiration_date < CURDATE() THEN
         SET v_is_expired = 1;
     END IF;
 
-    -- Also honour products already marked Expired in status
     IF OLD.status = 'Expired' THEN
         SET v_is_expired = 1;
     END IF;
 
     IF v_is_expired = 1 AND OLD.quantity > 0 THEN
 
-        -- 1. Financial write-off record
         INSERT INTO Expired_Loss_Log
             (user_id, product_id, product_name, sku,
              quantity_lost, cost_price, retail_price, notes)
@@ -447,7 +422,6 @@ BEGIN
             (OLD.user_id, OLD.product_id, OLD.product_name, OLD.sku,
              OLD.quantity, OLD.cost_price, OLD.retail_price, OLD.notes);
 
-        -- 2. Inventory movement record (stock wiped to zero)
         INSERT INTO Inventory_Log
             (product_id, product_name_snap, movement_type, quantity_change,
              stock_before, stock_after, reference_type, adjustment_reason)
@@ -459,8 +433,7 @@ BEGIN
 END$$
 
 -- -----------------------------------------------------------
---  TRIGGER 4 — AFTER INSERT on Sale_Item:
---  Deduct stock and write inventory log.
+--  TRIGGER 4 — AFTER INSERT on Sale_Item: Deduct stock.
 -- -----------------------------------------------------------
 CREATE TRIGGER trg_sale_item_deduct_stock
 AFTER INSERT ON Sale_Item
@@ -488,8 +461,7 @@ BEGIN
 END$$
 
 -- -----------------------------------------------------------
---  TRIGGER 5 — AFTER INSERT on Restock_Item:
---  Add stock and write inventory log.
+--  TRIGGER 5 — AFTER INSERT on Restock_Item: Add stock.
 -- -----------------------------------------------------------
 CREATE TRIGGER trg_restock_item_add_stock
 AFTER INSERT ON Restock_Item
@@ -568,13 +540,20 @@ DELIMITER ;
 DELIMITER $$
 
 -- -----------------------------------------------------------
---  SP 1 — Process a Cash Sale
+--  SP 1 — Process a Cash or G-Cash Sale
+--
+--  BUG 3 FIX: Added p_pay_method IN parameter.
+--  The caller (process_sale.php) passes 'cash' or 'gcash'.
+--  The value is validated in PHP before reaching here, but
+--  the SP also defaults to 'cash' if something unexpected
+--  slips through, since the ENUM enforces valid values.
 -- -----------------------------------------------------------
 CREATE PROCEDURE sp_process_cash_sale(
     IN  p_user_id     INT UNSIGNED,
     IN  p_product_ids TEXT,
     IN  p_quantities  TEXT,
     IN  p_tendered    DECIMAL(12,2),
+    IN  p_pay_method  VARCHAR(10),       -- BUG 3 FIX: 'cash' or 'gcash'
     OUT p_sale_id     INT UNSIGNED,
     OUT p_message     VARCHAR(255)
 )
@@ -589,6 +568,7 @@ proc: BEGIN
     DECLARE v_total      DECIMAL(12,2) DEFAULT 0.00;
     DECLARE v_tot_cost   DECIMAL(12,2) DEFAULT 0.00;
     DECLARE v_sale_id    INT UNSIGNED;
+    DECLARE v_method     VARCHAR(10);
 
     DECLARE EXIT HANDLER FOR SQLEXCEPTION
     BEGIN
@@ -596,6 +576,9 @@ proc: BEGIN
         SET p_sale_id = 0;
         SET p_message = 'Sale failed: a database error occurred.';
     END;
+
+    -- Sanitise pay_method — only allow 'cash' or 'gcash'
+    SET v_method = IF(p_pay_method = 'gcash', 'gcash', 'cash');
 
     SET v_count = 1 + LENGTH(p_product_ids) - LENGTH(REPLACE(p_product_ids, ',', ''));
 
@@ -605,7 +588,7 @@ proc: BEGIN
             (customer_id, payment_method, total_amount,
              amount_tendered, change_given, total_cost, sale_date)
         VALUES
-            (NULL, 'cash', 0.00, p_tendered, 0.00, 0.00, NOW());
+            (NULL, v_method, 0.00, p_tendered, 0.00, 0.00, NOW());
 
         SET v_sale_id = LAST_INSERT_ID();
 
@@ -661,7 +644,12 @@ proc: BEGIN
 END proc$$
 
 -- -----------------------------------------------------------
---  SP 2 — Process a Credit Sale
+--  SP 2 — Process a Credit / Utang Sale
+--
+--  Writes to: Customer, Sale (payment_method='credit'),
+--             Sale_Item, Debt.
+--  customers.php reads these same tables via
+--  vw_customer_outstanding / vw_customer_debt_detail.
 -- -----------------------------------------------------------
 CREATE PROCEDURE sp_process_credit_sale(
     IN  p_user_id        INT UNSIGNED,
@@ -701,11 +689,13 @@ proc: BEGIN
 
     START TRANSACTION;
 
+        -- Insert customer record
         INSERT INTO Customer (customer_name, contact_number, address, total_outstanding)
         VALUES (p_customer_name, p_contact_number, p_address, 0.00);
 
         SET v_cust_id = LAST_INSERT_ID();
 
+        -- Insert the sale shell
         INSERT INTO Sale
             (customer_id, payment_method, total_amount,
              amount_tendered, change_given, total_cost, sale_date)
@@ -757,10 +747,12 @@ proc: BEGIN
                total_cost   = v_tot_cost
          WHERE sale_id = v_sale_id;
 
+        -- Update customer's outstanding balance
         UPDATE Customer
            SET total_outstanding = v_total
          WHERE customer_id = v_cust_id;
 
+        -- Create the debt record
         INSERT INTO Debt (sale_id, original_amount, remaining_balance, status)
         VALUES (v_sale_id, v_total, v_total, 'Unpaid');
 
@@ -902,7 +894,6 @@ DELIMITER ;
 
 -- -----------------------------------------------------------
 --  Dashboard: per-product sales summary
---  Subtracts expired losses so net figures are accurate.
 -- -----------------------------------------------------------
 CREATE OR REPLACE VIEW vw_manager_dashboard AS
 SELECT
@@ -933,10 +924,7 @@ GROUP BY
     p.cost_price, p.expiration_date;
 
 -- -----------------------------------------------------------
---  Expired losses per user — use this for the "Losses" widget.
---  total_cost_lost  = what the stock cost you (pure loss).
---  total_retail_value_lost = what you could have sold it for.
---  Subtract total_cost_lost from net profit in your reports.
+--  Expired losses per user
 -- -----------------------------------------------------------
 CREATE OR REPLACE VIEW vw_expired_losses AS
 SELECT
@@ -952,8 +940,7 @@ JOIN User u ON u.user_id = el.user_id
 GROUP BY el.user_id, u.store_name;
 
 -- -----------------------------------------------------------
---  Net profit view — gross profit minus expired losses.
---  Join this to your dashboard for a single accurate figure.
+--  Net profit view
 -- -----------------------------------------------------------
 CREATE OR REPLACE VIEW vw_net_profit_summary AS
 SELECT
@@ -964,7 +951,7 @@ SELECT
     COALESCE(SUM(s.profit), 0)
         - COALESCE(el_agg.total_cost_lost, 0)         AS net_profit
 FROM User u
-LEFT JOIN Sale s ON s.sale_id IS NOT NULL   -- placeholder; join via Sale_Item if needed
+LEFT JOIN Sale s ON s.sale_id IS NOT NULL
 LEFT JOIN (
     SELECT user_id, SUM(total_cost_lost) AS total_cost_lost
       FROM Expired_Loss_Log
@@ -972,6 +959,13 @@ LEFT JOIN (
 ) el_agg ON el_agg.user_id = u.user_id
 GROUP BY u.user_id, u.store_name, el_agg.total_cost_lost;
 
+-- -----------------------------------------------------------
+--  Customer outstanding balances
+--  Used by customers.php to display the table and summary.
+--  BUG 4 FIX: This view reads from the correct tables
+--  (Customer, Sale, Debt, Debt_Payment) that sp_process_credit_sale
+--  writes to — not the legacy `customers`/`customer_credits` tables.
+-- -----------------------------------------------------------
 CREATE OR REPLACE VIEW vw_customer_outstanding AS
 SELECT
     cu.customer_id,
@@ -979,6 +973,7 @@ SELECT
     cu.contact_number,
     cu.address,
     cu.total_outstanding,
+    cu.created_at,
     COUNT(DISTINCT d.debt_id)                                        AS total_credit_transactions,
     COALESCE(SUM(d.original_amount), 0)                             AS total_borrowed,
     COALESCE(SUM(d.remaining_balance), 0)                           AS total_remaining,
@@ -989,8 +984,36 @@ LEFT JOIN Sale          s  ON s.customer_id = cu.customer_id
 LEFT JOIN Debt          d  ON d.sale_id     = s.sale_id
 LEFT JOIN Debt_Payment dp  ON dp.debt_id    = d.debt_id
 GROUP BY cu.customer_id, cu.customer_name, cu.contact_number,
-         cu.address, cu.total_outstanding;
+         cu.address, cu.total_outstanding, cu.created_at;
 
+-- -----------------------------------------------------------
+--  Customer debt detail — one row per Debt record.
+--  customers.php uses this for the per-row table display
+--  (amount owed, settlement date, status per transaction).
+--  BUG 4 FIX: Replaces the old customer_credits JOIN.
+-- -----------------------------------------------------------
+CREATE OR REPLACE VIEW vw_customer_debt_detail AS
+SELECT
+    cu.customer_id,
+    cu.customer_name,
+    cu.contact_number,
+    cu.address,
+    cu.created_at,
+    d.debt_id,
+    d.sale_id,
+    d.original_amount,
+    d.remaining_balance,
+    d.settlement_date,
+    d.status           AS debt_status,
+    s.sale_date,
+    s.total_amount     AS sale_total
+FROM Customer cu
+LEFT JOIN Sale s  ON s.customer_id = cu.customer_id
+LEFT JOIN Debt d  ON d.sale_id     = s.sale_id;
+
+-- -----------------------------------------------------------
+--  Stock alerts
+-- -----------------------------------------------------------
 CREATE OR REPLACE VIEW vw_stock_alerts AS
 SELECT
     p.product_id,
@@ -1008,19 +1031,69 @@ WHERE p.status IN ('Low Stock','Out of Stock','Near Expiry','Expired')
    OR (p.expiration_date IS NOT NULL AND p.expiration_date < CURDATE())
 ORDER BY p.quantity ASC;
 
+-- -----------------------------------------------------------
+--  Daily sales summary — BUG 3 FIX:
+--  Now breaks out cash_sales, gcash_sales, and credit_sales
+--  separately. The Sales page widgets should read:
+--    • cash_sales   → Cash Sales count / revenue
+--    • gcash_sales  → Online Sales (G-Cash) count / revenue
+--    • credit_sales → Credit / Utang count / revenue
+--  The old view only had cash_sales + credit_sales; G-Cash
+--  was silently counted as cash, so online revenue was wrong.
+-- -----------------------------------------------------------
 CREATE OR REPLACE VIEW vw_daily_sales_summary AS
 SELECT
-    DATE(s.sale_date)                                                AS sale_day,
-    COUNT(DISTINCT s.sale_id)                                        AS total_transactions,
-    SUM(s.total_amount)                                              AS total_revenue,
-    SUM(s.total_cost)                                                AS total_cost,
-    SUM(s.profit)                                                    AS total_profit,
-    SUM(CASE WHEN s.payment_method = 'cash'   THEN 1 ELSE 0 END)   AS cash_sales,
-    SUM(CASE WHEN s.payment_method = 'credit' THEN 1 ELSE 0 END)   AS credit_sales
+    DATE(s.sale_date)                                                    AS sale_day,
+    COUNT(DISTINCT s.sale_id)                                            AS total_transactions,
+    SUM(s.total_amount)                                                  AS total_revenue,
+    SUM(s.total_cost)                                                    AS total_cost,
+    SUM(s.profit)                                                        AS total_profit,
+
+    -- Cash (physical money only)
+    SUM(CASE WHEN s.payment_method = 'cash'   THEN 1     ELSE 0    END) AS cash_sales,
+    SUM(CASE WHEN s.payment_method = 'cash'   THEN s.total_amount
+                                               ELSE 0    END)           AS cash_revenue,
+
+    -- G-Cash / Online
+    SUM(CASE WHEN s.payment_method = 'gcash'  THEN 1     ELSE 0    END) AS gcash_sales,
+    SUM(CASE WHEN s.payment_method = 'gcash'  THEN s.total_amount
+                                               ELSE 0    END)           AS gcash_revenue,
+
+    -- Credit / Utang
+    SUM(CASE WHEN s.payment_method = 'credit' THEN 1     ELSE 0    END) AS credit_sales,
+    SUM(CASE WHEN s.payment_method = 'credit' THEN s.total_amount
+                                               ELSE 0    END)           AS credit_revenue
+
 FROM Sale s
 GROUP BY DATE(s.sale_date)
 ORDER BY sale_day DESC;
 
+-- -----------------------------------------------------------
+--  Payment method summary (per user, all-time)
+--  BUG 3 FIX: New view for the Sales page summary widgets.
+--  Query this filtered by user_id from Sale → Sale_Item →
+--  Product.user_id, or add user_id to Sale if needed.
+--
+--  NOTE: Sale does not store user_id directly; join through
+--  Sale_Item → Product to get user_id, or filter via a
+--  subquery. For convenience a user-scoped version is below.
+-- -----------------------------------------------------------
+CREATE OR REPLACE VIEW vw_payment_method_summary AS
+SELECT
+    p.user_id,
+    s.payment_method,
+    COUNT(DISTINCT s.sale_id)  AS total_transactions,
+    SUM(s.total_amount)        AS total_revenue,
+    SUM(s.total_cost)          AS total_cost,
+    SUM(s.profit)              AS total_profit
+FROM Sale s
+JOIN Sale_Item si ON si.sale_id    = s.sale_id
+JOIN Product   p  ON p.product_id  = si.product_id
+GROUP BY p.user_id, s.payment_method;
+
+-- -----------------------------------------------------------
+--  Inventory movements
+-- -----------------------------------------------------------
 CREATE OR REPLACE VIEW vw_inventory_movements AS
 SELECT
     il.log_id,

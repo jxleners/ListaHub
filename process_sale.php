@@ -3,8 +3,15 @@
 //  process_sale.php  —  AJAX endpoint for POS checkout
 //  Called via fetch() from pos.php
 //  Handles: cash sale (Cash / G-Cash) and credit sale (Utang)
-//  Uses stored procedures: sp_process_cash_sale,
-//                          sp_process_credit_sale
+//
+//  FIX 2 (G-Cash):
+//    The Sale.payment_method ENUM now includes 'gcash'
+//    (see schema patch). We pass pay_method directly so
+//    G-Cash revenue is separated from cash in sales.php.
+//
+//  FIX 3 (Utang / customers.php):
+//    Credit sale writes to Customer + Debt tables (schema).
+//    customers.php now reads those same tables — no mismatch.
 // ============================================================
 session_start();
 
@@ -43,7 +50,6 @@ if (empty($data['items']) || !is_array($data['items'])) {
     exit;
 }
 
-// Build comma-separated product_ids and quantities for stored procedures
 $productIds = [];
 $quantities = [];
 foreach ($data['items'] as $item) {
@@ -57,18 +63,20 @@ foreach ($data['items'] as $item) {
     $quantities[] = $qty;
 }
 
-$productIdsStr  = implode(',', $productIds);
-$quantitiesStr  = implode(',', $quantities);
+$productIdsStr = implode(',', $productIds);
+$quantitiesStr = implode(',', $quantities);
 
 // ── Handle cash / G-Cash sale ─────────────────────────────────
 if ($type === 'cash') {
 
     $tendered   = (float)($data['tendered']   ?? 0);
     $total      = (float)($data['total']      ?? 0);
-    $pay_method = ($data['pay_method'] ?? 'cash');
 
-    // G-Cash is stored as 'cash' in the DB (ENUM only allows cash|credit)
-    // The pay_method label is informational; the DB payment_method = 'cash'
+    // FIX 2: honour the exact pay_method sent by pos.php
+    // Allowed values matching the updated ENUM: 'cash', 'gcash'
+    $pay_method_raw = strtolower(trim($data['pay_method'] ?? 'cash'));
+    $allowed_methods = ['cash', 'gcash'];
+    $pay_method = in_array($pay_method_raw, $allowed_methods, true) ? $pay_method_raw : 'cash';
 
     if ($tendered < $total) {
         echo json_encode(['success' => false, 'message' => 'Kulang po ang pera mo.']);
@@ -79,18 +87,19 @@ if ($type === 'cash') {
         $pdo = getPDO();
 
         // Call stored procedure sp_process_cash_sale
+        // The SP signature is updated to accept p_pay_method (see schema patch)
         $stmt = $pdo->prepare(
-            "CALL sp_process_cash_sale(:user_id, :product_ids, :quantities, :tendered, @p_sale_id, @p_message)"
+            "CALL sp_process_cash_sale(:user_id, :product_ids, :quantities, :tendered, :pay_method, @p_sale_id, @p_message)"
         );
         $stmt->execute([
             ':user_id'     => $user_id,
             ':product_ids' => $productIdsStr,
             ':quantities'  => $quantitiesStr,
             ':tendered'    => $tendered,
+            ':pay_method'  => $pay_method,
         ]);
         $stmt->closeCursor();
 
-        // Fetch OUT params
         $out = $pdo->query("SELECT @p_sale_id AS sale_id, @p_message AS message")->fetch(PDO::FETCH_ASSOC);
 
         $saleId  = (int)$out['sale_id'];
@@ -118,6 +127,8 @@ if ($type === 'cash') {
     $custName    = trim($data['customer_name']    ?? '');
     $custContact = trim($data['customer_contact'] ?? '');
     $custAddress = trim($data['customer_address'] ?? '');
+    // notes is optional — SP doesn't use it but we log it
+    $custNotes   = trim($data['customer_notes']   ?? '');
 
     if (!$custName || !$custContact || !$custAddress) {
         echo json_encode(['success' => false, 'message' => 'Kulang pa ang info ng customer.']);
@@ -127,7 +138,7 @@ if ($type === 'cash') {
     try {
         $pdo = getPDO();
 
-        // Call stored procedure sp_process_credit_sale
+        // sp_process_credit_sale writes to Customer + Sale + Sale_Item + Debt
         $stmt = $pdo->prepare(
             "CALL sp_process_credit_sale(
                 :user_id,

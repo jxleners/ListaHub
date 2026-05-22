@@ -13,11 +13,10 @@ if (!isset($_SESSION['user_id'])) {
 require_once './utils/lhdb.php';
 
 $user_id = (int) $_SESSION['user_id'];
-
 try {
     $pdo = getPDO();
 
-    // Aggregate totals from the manager dashboard view
+    // ── Aggregate totals from the manager dashboard view ──────────────
     $stmt = $pdo->prepare(
         "SELECT
             SUM(total_units_sold)             AS total_units_sold,
@@ -32,56 +31,71 @@ try {
     $stmt->execute([':user_id' => $user_id]);
     $stats = $stmt->fetch(PDO::FETCH_ASSOC);
 
-    // Today's revenue
+    // ── Today's revenue ───────────────────────────────────────────────
+    // Use a subquery to get user's sale_ids first, avoiding duplicate
+    // counting when a sale has multiple Sale_Item rows.
     $todayStmt = $pdo->prepare(
         "SELECT COALESCE(SUM(s.total_amount), 0) AS todays_revenue
          FROM Sale s
-         JOIN Sale_Item si ON si.sale_id   = s.sale_id
-         JOIN Product   p  ON p.product_id = si.product_id
-         WHERE p.user_id = :user_id
-           AND DATE(s.sale_date) = CURDATE()"
+         WHERE DATE(s.sale_date) = CURDATE()
+           AND s.sale_id IN (
+               SELECT DISTINCT si.sale_id
+               FROM Sale_Item si
+               JOIN Product p ON p.product_id = si.product_id
+               WHERE p.user_id = :user_id
+           )"
     );
     $todayStmt->execute([':user_id' => $user_id]);
     $todayRow = $todayStmt->fetch(PDO::FETCH_ASSOC);
 
-    // Sales this month
+    // ── Sales this month ──────────────────────────────────────────────
     $monthStmt = $pdo->prepare(
         "SELECT COALESCE(SUM(s.total_amount), 0) AS month_revenue
          FROM Sale s
-         JOIN Sale_Item si ON si.sale_id   = s.sale_id
-         JOIN Product   p  ON p.product_id = si.product_id
-         WHERE p.user_id = :user_id
-           AND YEAR(s.sale_date)  = YEAR(CURDATE())
-           AND MONTH(s.sale_date) = MONTH(CURDATE())"
+         WHERE YEAR(s.sale_date)  = YEAR(CURDATE())
+           AND MONTH(s.sale_date) = MONTH(CURDATE())
+           AND s.sale_id IN (
+               SELECT DISTINCT si.sale_id
+               FROM Sale_Item si
+               JOIN Product p ON p.product_id = si.product_id
+               WHERE p.user_id = :user_id
+           )"
     );
     $monthStmt->execute([':user_id' => $user_id]);
     $monthRow = $monthStmt->fetch(PDO::FETCH_ASSOC);
 
-    // Cash vs credit (G-Cash/online) revenue
+    // ── Cash vs G-Cash revenue ────────────────────────────────────────
+    // Scoped to user via subquery — no JOIN multiplying rows.
     $payStmt = $pdo->prepare(
         "SELECT
-            COALESCE(SUM(CASE WHEN s.payment_method = 'cash'   THEN s.total_amount ELSE 0 END), 0) AS cash_revenue,
-            COALESCE(SUM(CASE WHEN s.payment_method = 'credit' THEN s.total_amount ELSE 0 END), 0) AS credit_revenue
+            COALESCE(SUM(CASE WHEN s.payment_method = 'cash'  THEN s.total_amount ELSE 0 END), 0) AS cash_revenue,
+            COALESCE(SUM(CASE WHEN s.payment_method = 'gcash' THEN s.total_amount ELSE 0 END), 0) AS gcash_revenue
          FROM Sale s
-         JOIN Sale_Item si ON si.sale_id   = s.sale_id
-         JOIN Product   p  ON p.product_id = si.product_id
-         WHERE p.user_id = :user_id"
+         WHERE s.sale_id IN (
+             SELECT DISTINCT si.sale_id
+             FROM Sale_Item si
+             JOIN Product p ON p.product_id = si.product_id
+             WHERE p.user_id = :user_id
+         )"
     );
     $payStmt->execute([':user_id' => $user_id]);
     $payRow = $payStmt->fetch(PDO::FETCH_ASSOC);
 
-    // Total distinct transactions
+    // ── Total distinct transactions ───────────────────────────────────
     $txStmt = $pdo->prepare(
         "SELECT COUNT(DISTINCT s.sale_id) AS total_transactions
          FROM Sale s
-         JOIN Sale_Item si ON si.sale_id   = s.sale_id
-         JOIN Product   p  ON p.product_id = si.product_id
-         WHERE p.user_id = :user_id"
+         WHERE s.sale_id IN (
+             SELECT DISTINCT si.sale_id
+             FROM Sale_Item si
+             JOIN Product p ON p.product_id = si.product_id
+             WHERE p.user_id = :user_id
+         )"
     );
     $txStmt->execute([':user_id' => $user_id]);
     $txRow = $txStmt->fetch(PDO::FETCH_ASSOC);
 
-    // Total distinct products sold
+    // ── Total distinct products sold ──────────────────────────────────
     $itemsStmt = $pdo->prepare(
         "SELECT COUNT(DISTINCT si.product_id) AS total_products
          FROM Sale_Item si
@@ -91,16 +105,20 @@ try {
     $itemsStmt->execute([':user_id' => $user_id]);
     $itemsRow = $itemsStmt->fetch(PDO::FETCH_ASSOC);
 
-    // Monthly revenue — last 6 months (SUM + GROUP BY in DB)
+    // ── Monthly revenue — last 6 months ──────────────────────────────
+    // Group by month on Sale directly; scope via subquery.
     $monthlyStmt = $pdo->prepare(
         "SELECT DATE_FORMAT(s.sale_date, '%b %Y') AS month_label,
                 DATE_FORMAT(s.sale_date, '%Y-%m')  AS sort_key,
                 SUM(s.total_amount)                AS monthly_total
          FROM   Sale s
-         JOIN   Sale_Item si ON si.sale_id   = s.sale_id
-         JOIN   Product   p  ON p.product_id = si.product_id
-         WHERE  p.user_id = :user_id
-           AND  s.sale_date >= DATE_SUB(NOW(), INTERVAL 6 MONTH)
+         WHERE  s.sale_date >= DATE_SUB(NOW(), INTERVAL 6 MONTH)
+           AND  s.sale_id IN (
+               SELECT DISTINCT si.sale_id
+               FROM Sale_Item si
+               JOIN Product p ON p.product_id = si.product_id
+               WHERE p.user_id = :user_id
+           )
          GROUP  BY DATE_FORMAT(s.sale_date, '%Y-%m')
          ORDER  BY MIN(s.sale_date) ASC"
     );
@@ -113,7 +131,7 @@ try {
     $monthlyData = [];
     $todayRow    = ['todays_revenue'  => 0];
     $monthRow    = ['month_revenue'   => 0];
-    $payRow      = ['cash_revenue'    => 0, 'credit_revenue' => 0];
+    $payRow      = ['cash_revenue' => 0, 'gcash_revenue' => 0];
     $txRow       = ['total_transactions' => 0];
     $itemsRow    = ['total_products'  => 0];
 }
@@ -245,7 +263,7 @@ $chartValuesJson = json_encode($chartValues);
               </div>
               <div class="card-text">
                 <span class="card-label">Online Sales<br>(G-Cash)</span>
-                <h3 class="card-value">₱<?= number_format((float) ($payRow['credit_revenue'] ?? 0), 0) ?></h3>
+                <h3 class="card-value">₱<?= number_format((float) ($payRow['gcash_revenue'] ?? 0), 0) ?></h3>
               </div>
             </div>
           </div>
