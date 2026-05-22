@@ -19,6 +19,8 @@ try {
          FROM   Product
          WHERE  user_id = :user_id
            AND  quantity > 0
+           AND  status != 'Expired'
+           AND  (expiration_date IS NULL OR expiration_date >= CURDATE())
          ORDER  BY product_name ASC"
     );
     $stmt->execute([':user_id' => $user_id]);
@@ -44,6 +46,47 @@ $activePage = 'pos';
   <link rel="stylesheet" href="global_pos.css"/>
   <link rel="stylesheet" href="sidebar.css"/>
   <link rel="stylesheet" href="pos.css"/>
+
+  <style>
+    /*
+     * Inline fixes for the three bugs:
+     *
+     * 1. Expired products — handled in SQL (see PHP above).
+     *
+     * 2. Scroll — .table-wrap must clip its content and allow
+     *    vertical overflow so the scrollbar appears when there
+     *    are more rows than the visible area can hold.
+     *    We only override the properties that fix the bug;
+     *    everything else continues to come from pos.css.
+     *
+     * 3. Pagination — .tbody-row default display is restored
+     *    to 'flex' by JS (not '' which is browser-default and
+     *    may collapse rows depending on pos.css).  The CSS rule
+     *    below makes the intent explicit so both '' and 'flex'
+     *    produce the same result.
+     */
+
+    /* Scrollable table body */
+    .table-wrap {
+      overflow-x: auto;   /* horizontal scroll for narrow viewports */
+      overflow-y: auto;   /* vertical scroll when rows exceed height */
+    }
+
+    /* Give the inner scroll area a defined max-height so the
+       scrollbar actually appears instead of expanding forever. */
+    .table-inner {
+      max-height: 480px;  /* adjust to taste / match pos.css value */
+      overflow-y: auto;
+    }
+
+    /* Ensure every tbody row is a flex row so that restoring
+       display:'' and display:'flex' are equivalent. */
+    #pos-tbody .tbody-row {
+      display: flex;
+      flex-direction: column; /* matches the original markup that
+                                  wraps content in .tbody-row-content */
+    }
+  </style>
 </head>
 <body>
 
@@ -190,13 +233,11 @@ $activePage = 'pos';
 <!-- ════════════════════════════════════════════════════════════
      CUSTOMER INFORMATION MODAL
      Opens when "Utang" payment method is chosen at checkout.
-     All JS wiring is below in the <script> block.
      ════════════════════════════════════════════════════════════ -->
 <div class="cust-overlay" id="cust-overlay" role="dialog" aria-modal="true" aria-label="Customer Information">
 
   <div class="cust-modal">
 
-    <!-- Header -->
     <div class="cust-modal-header">
       <h2 class="cust-modal-title">Customer Information</h2>
       <button class="cust-close-btn" id="cust-close-btn" type="button" aria-label="Close">
@@ -204,10 +245,8 @@ $activePage = 'pos';
       </button>
     </div>
 
-    <!-- Body / form fields -->
     <div class="cust-modal-body">
 
-      <!-- Customer Name -->
       <div class="cust-field">
         <label class="cust-label" for="cust-name">Customer Name</label>
         <div class="cust-input-wrap">
@@ -216,7 +255,6 @@ $activePage = 'pos';
         </div>
       </div>
 
-      <!-- Contact Information — address + contact stacked with divider -->
       <div class="cust-field">
         <label class="cust-label" for="cust-address">Contact Information</label>
         <div class="cust-input-wrap cust-contact-box">
@@ -228,7 +266,6 @@ $activePage = 'pos';
         </div>
       </div>
 
-      <!-- Amount Owed — readonly, filled by JS from cart total -->
       <div class="cust-field">
         <label class="cust-label" for="cust-amount">Amount Owed</label>
         <div class="cust-input-wrap cust-amount-wrap">
@@ -238,7 +275,6 @@ $activePage = 'pos';
         </div>
       </div>
 
-      <!-- Additional Notes -->
       <div class="cust-field">
         <label class="cust-label" for="cust-notes">Additional Notes</label>
         <div class="cust-input-wrap">
@@ -247,10 +283,8 @@ $activePage = 'pos';
         </div>
       </div>
 
-      <!-- Validation error -->
       <p class="cust-error" id="cust-error"></p>
 
-      <!-- Footer buttons -->
       <div class="cust-modal-footer">
         <button class="cust-btn-cancel"   id="cust-btn-cancel"   type="button">Cancel</button>
         <button class="cust-btn-complete" id="cust-btn-complete" type="button">Complete</button>
@@ -265,18 +299,24 @@ $activePage = 'pos';
 'use strict';
 
 /* ─────────────────────────────────────────────────────────────
-   State
+   Constants & State
 ───────────────────────────────────────────────────────────── */
-let payMethod   = 'cash';
-let currentPage = 1;
-const ROWS_PER_PAGE = 10;
+var payMethod   = 'cash';
+var currentPage = 1;
+var ROWS_PER_PAGE = 10;
 
-const tbody         = document.getElementById('pos-tbody');
-const displayTotal  = document.getElementById('display-total');
-const displayItems  = document.getElementById('display-items');
-const inputTendered = document.getElementById('input-tendered');
-const displayChange = document.getElementById('display-change');
-const custOverlay   = document.getElementById('cust-overlay');
+/* The display value to RESTORE when un-hiding a row.
+   pos.css defines .tbody-row as a block/flex container.
+   Using an explicit value instead of '' avoids any ambiguity
+   about the browser's own default for a <div>. */
+var ROW_DISPLAY_SHOW = 'flex'; // must match pos.css .tbody-row display value
+
+var tbody         = document.getElementById('pos-tbody');
+var displayTotal  = document.getElementById('display-total');
+var displayItems  = document.getElementById('display-items');
+var inputTendered = document.getElementById('input-tendered');
+var displayChange = document.getElementById('display-change');
+var custOverlay   = document.getElementById('cust-overlay');
 
 /* ─────────────────────────────────────────────────────────────
    Helpers
@@ -285,7 +325,7 @@ function fmt(n)        { return '₱ ' + n.toFixed(2); }
 function getTendered() { return Math.max(0, parseFloat(inputTendered.value) || 0); }
 
 function getTotal() {
-  let t = 0;
+  var t = 0;
   tbody.querySelectorAll('.tbody-row').forEach(function(row) {
     t += (parseFloat(row.dataset.price) || 0) *
          (parseInt(row.querySelector('.qty-val').textContent, 10) || 0);
@@ -294,7 +334,7 @@ function getTotal() {
 }
 
 function getItemCount() {
-  let c = 0;
+  var c = 0;
   tbody.querySelectorAll('.tbody-row').forEach(function(row) {
     c += parseInt(row.querySelector('.qty-val').textContent, 10) || 0;
   });
@@ -302,9 +342,9 @@ function getItemCount() {
 }
 
 function updateSummary() {
-  const total    = getTotal();
-  const items    = getItemCount();
-  const tendered = getTendered();
+  var total    = getTotal();
+  var items    = getItemCount();
+  var tendered = getTendered();
   displayTotal.textContent  = fmt(total);
   displayItems.textContent  = '( ' + items + ' item' + (items !== 1 ? 's' : '') + ' )';
   displayChange.textContent = fmt(Math.max(0, tendered - total));
@@ -314,27 +354,27 @@ function updateSummary() {
    Table interactions (qty stepper + trash)
 ───────────────────────────────────────────────────────────── */
 tbody.addEventListener('click', function(e) {
-  const addBtn   = e.target.closest('.qty-add');
-  const minusBtn = e.target.closest('.qty-minus');
-  const trashBtn = e.target.closest('.trash-btn');
+  var addBtn   = e.target.closest('.qty-add');
+  var minusBtn = e.target.closest('.qty-minus');
+  var trashBtn = e.target.closest('.trash-btn');
 
   if (addBtn) {
-    const row   = addBtn.closest('.tbody-row');
-    const valEl = row.querySelector('.qty-val');
-    const stock = parseInt(row.dataset.stock, 10) || 0;
-    let   qty   = parseInt(valEl.textContent, 10) || 0;
+    var row   = addBtn.closest('.tbody-row');
+    var valEl = row.querySelector('.qty-val');
+    var stock = parseInt(row.dataset.stock, 10) || 0;
+    var qty   = parseInt(valEl.textContent, 10) || 0;
     if (qty < stock) { valEl.textContent = qty + 1; updateSummary(); }
   }
   if (minusBtn) {
-    const row   = minusBtn.closest('.tbody-row');
-    const valEl = row.querySelector('.qty-val');
-    let   qty   = parseInt(valEl.textContent, 10) || 0;
+    var row   = minusBtn.closest('.tbody-row');
+    var valEl = row.querySelector('.qty-val');
+    var qty   = parseInt(valEl.textContent, 10) || 0;
     if (qty > 0) { valEl.textContent = qty - 1; updateSummary(); }
   }
   if (trashBtn) {
-    const row = trashBtn.closest('.tbody-row');
+    var row = trashBtn.closest('.tbody-row');
     row.querySelector('.qty-val').textContent = '0';
-    row.dataset.hidden = '1';
+    row.dataset.hidden = '1';   /* mark as removed; renderPage will hide it */
     updateSummary();
     renderPage();
   }
@@ -348,7 +388,7 @@ inputTendered.addEventListener('input', updateSummary);
 document.getElementById('btn-clear').addEventListener('click', function() {
   tbody.querySelectorAll('.tbody-row').forEach(function(row) {
     row.querySelector('.qty-val').textContent = '0';
-    row.dataset.hidden = '';
+    row.dataset.hidden = '';   /* restore: empty string = visible */
   });
   inputTendered.value = '';
   currentPage = 1;
@@ -365,10 +405,10 @@ function selectPayMethod(method) {
   document.getElementById('pay-gcash').classList.toggle('active', method === 'gcash');
   document.getElementById('pay-utang').classList.toggle('active', method === 'utang');
 
-  const tenderedSection = inputTendered.closest('.amount-tendered-btns');
-  const tenderedLabel   = document.querySelector('.amount-tendered-label');
-  const changeLabel     = document.querySelector('.change-label');
-  const changeDisplay   = document.getElementById('display-change');
+  var tenderedSection = inputTendered.closest('.amount-tendered-btns');
+  var tenderedLabel   = document.querySelector('.amount-tendered-label');
+  var changeLabel     = document.querySelector('.change-label');
+  var changeDisplay   = document.getElementById('display-change');
 
   if (method === 'utang') {
     tenderedSection.style.display = 'none';
@@ -394,7 +434,7 @@ document.getElementById('pay-utang').addEventListener('click', function() { sele
 ───────────────────────────────────────────────────────────── */
 document.querySelectorAll('.btn-quick').forEach(function(btn) {
   btn.addEventListener('click', function() {
-    const current = parseFloat(inputTendered.value) || 0;
+    var current = parseFloat(inputTendered.value) || 0;
     inputTendered.value = (current + (parseFloat(this.dataset.amount) || 0)).toFixed(2);
     updateSummary();
   });
@@ -427,9 +467,9 @@ document.getElementById('btn-cancel').addEventListener('click', resetPOS);
    Build cart
 ───────────────────────────────────────────────────────────── */
 function buildCart() {
-  const items = [];
+  var items = [];
   tbody.querySelectorAll('.tbody-row').forEach(function(row) {
-    const qty = parseInt(row.querySelector('.qty-val').textContent, 10) || 0;
+    var qty = parseInt(row.querySelector('.qty-val').textContent, 10) || 0;
     if (qty > 0) {
       items.push({
         product_id: parseInt(row.dataset.productId, 10),
@@ -445,9 +485,9 @@ function buildCart() {
    Checkout button
 ───────────────────────────────────────────────────────────── */
 document.getElementById('btn-checkout').addEventListener('click', function() {
-  const total    = getTotal();
-  const items    = getItemCount();
-  const tendered = getTendered();
+  var total    = getTotal();
+  var items    = getItemCount();
+  var tendered = getTendered();
 
   if (items === 0) {
     alert('No items added to the cart.');
@@ -461,8 +501,8 @@ document.getElementById('btn-checkout').addEventListener('click', function() {
   if (payMethod === 'utang') {
     openCustModal();
   } else {
-    const change = Math.max(0, tendered - total);
-    const msg = [
+    var change = Math.max(0, tendered - total);
+    var msg = [
       'TOTAL:    ₱' + total.toFixed(2),
       'ITEMS:    ' + items,
       'PAYMENT:  ' + payMethod.toUpperCase(),
@@ -478,8 +518,8 @@ document.getElementById('btn-checkout').addEventListener('click', function() {
    Cash sale submission
 ───────────────────────────────────────────────────────────── */
 function submitCashSale(total, tendered, change) {
-  const cartItems   = buildCart();
-  const btnCheckout = document.getElementById('btn-checkout');
+  var cartItems   = buildCart();
+  var btnCheckout = document.getElementById('btn-checkout');
   btnCheckout.disabled    = true;
   btnCheckout.textContent = 'Processing…';
 
@@ -515,21 +555,17 @@ function submitCashSale(total, tendered, change) {
 
 /* ─────────────────────────────────────────────────────────────
    Customer Information Modal
-   Opens when "Utang" is selected and user clicks Check out
 ───────────────────────────────────────────────────────────── */
 function openCustModal() {
-  // Reset fields
   document.getElementById('cust-name').value    = '';
   document.getElementById('cust-address').value = '';
   document.getElementById('cust-contact').value = '';
   document.getElementById('cust-notes').value   = '';
   document.getElementById('cust-error').textContent = '';
-  // Pre-fill amount owed from current cart total
   document.getElementById('cust-amount').value  = getTotal().toFixed(2);
 
   custOverlay.classList.add('open');
   document.body.style.overflow = 'hidden';
-  // Focus first field for accessibility
   setTimeout(function() { document.getElementById('cust-name').focus(); }, 120);
 }
 
@@ -538,7 +574,6 @@ function closeCustModal() {
   document.body.style.overflow = '';
 }
 
-// Close triggers
 document.getElementById('cust-close-btn').addEventListener('click',  closeCustModal);
 document.getElementById('cust-btn-cancel').addEventListener('click',  closeCustModal);
 custOverlay.addEventListener('click', function(e) {
@@ -548,13 +583,12 @@ document.addEventListener('keydown', function(e) {
   if (e.key === 'Escape' && custOverlay.classList.contains('open')) closeCustModal();
 });
 
-// Complete button — validate then submit
 document.getElementById('cust-btn-complete').addEventListener('click', function() {
-  const name    = document.getElementById('cust-name').value.trim();
-  const address = document.getElementById('cust-address').value.trim();
-  const contact = document.getElementById('cust-contact').value.trim();
-  const notes   = document.getElementById('cust-notes').value.trim();
-  const errEl   = document.getElementById('cust-error');
+  var name    = document.getElementById('cust-name').value.trim();
+  var address = document.getElementById('cust-address').value.trim();
+  var contact = document.getElementById('cust-contact').value.trim();
+  var notes   = document.getElementById('cust-notes').value.trim();
+  var errEl   = document.getElementById('cust-error');
 
   if (!name || !address || !contact) {
     errEl.textContent = 'Customer Name, Address, and Contact Number are required.';
@@ -569,9 +603,9 @@ document.getElementById('cust-btn-complete').addEventListener('click', function(
    Utang / credit sale submission
 ───────────────────────────────────────────────────────────── */
 function submitUtangSale(custName, custAddress, custContact, custNotes) {
-  const total       = getTotal();
-  const cartItems   = buildCart();
-  const btnCheckout = document.getElementById('btn-checkout');
+  var total       = getTotal();
+  var cartItems   = buildCart();
+  var btnCheckout = document.getElementById('btn-checkout');
   btnCheckout.disabled    = true;
   btnCheckout.textContent = 'Processing…';
 
@@ -611,11 +645,14 @@ function submitUtangSale(custName, custAddress, custContact, custNotes) {
    Search filter
 ───────────────────────────────────────────────────────────── */
 document.getElementById('search-input').addEventListener('input', function() {
-  const q = this.value.toLowerCase().trim();
+  var q = this.value.toLowerCase().trim();
   tbody.querySelectorAll('.tbody-row').forEach(function(row) {
-    const name = (row.querySelector('.col-name-val') || {}).textContent || '';
-    const sku  = (row.querySelector('.col-sku-val')  || {}).textContent || '';
-    row.dataset.hidden = (q && !name.toLowerCase().includes(q) && !sku.toLowerCase().includes(q)) ? '1' : '';
+    var name = (row.querySelector('.col-name-val') || {}).textContent || '';
+    var sku  = (row.querySelector('.col-sku-val')  || {}).textContent || '';
+    /* Mark filtered-out rows with 'search' so trash-removed rows
+       (data-hidden='1') are not accidentally un-hidden by a new search. */
+    if (row.dataset.hidden === '1') return;   /* already trash-removed, skip */
+    row.dataset.hidden = (q && !name.toLowerCase().includes(q) && !sku.toLowerCase().includes(q)) ? 'search' : '';
   });
   currentPage = 1;
   renderPage();
@@ -623,27 +660,69 @@ document.getElementById('search-input').addEventListener('input', function() {
 
 /* ─────────────────────────────────────────────────────────────
    Pagination
+   ─────────────────────────────────────────────────────────────
+   VISIBLE definition:
+     data-hidden === ''     → available, not filtered
+     data-hidden === 'search' → hidden by search filter
+     data-hidden === '1'    → removed by trash button
+   Only rows with data-hidden === '' are shown.
+   All others are hidden regardless of page.
 ───────────────────────────────────────────────────────────── */
 function renderPage() {
-  const allRows = Array.from(tbody.querySelectorAll('.tbody-row'));
-  const visible = allRows.filter(function(r) { return r.dataset.hidden !== '1'; });
-  const total   = visible.length;
-  const maxPage = Math.max(1, Math.ceil(total / ROWS_PER_PAGE));
+  var allRows = Array.from(tbody.querySelectorAll('.tbody-row'));
+
+  /* Rows that pass all filters (not trashed, not search-filtered) */
+  var visible = allRows.filter(function(r) {
+    return r.dataset.hidden === '';
+  });
+
+  var total   = visible.length;
+  var maxPage = Math.max(1, Math.ceil(total / ROWS_PER_PAGE));
+
+  /* Clamp currentPage to valid range */
+  if (currentPage < 1)       currentPage = 1;
   if (currentPage > maxPage) currentPage = maxPage;
-  const start = (currentPage - 1) * ROWS_PER_PAGE;
-  const end   = start + ROWS_PER_PAGE;
-  allRows.forEach(function(r)    { r.style.display = 'none'; });
-  visible.forEach(function(r, i) { r.style.display = (i >= start && i < end) ? '' : 'none'; });
-  document.getElementById('btn-prev').disabled = currentPage <= 1;
-  document.getElementById('btn-next').disabled = currentPage >= maxPage;
+
+  var start = (currentPage - 1) * ROWS_PER_PAGE;
+  var end   = start + ROWS_PER_PAGE;
+
+  /* First hide every row (handles search-filtered + trashed + off-page) */
+  allRows.forEach(function(r) {
+    r.style.display = 'none';
+  });
+
+  /* Then show only the current page's slice of visible rows.
+     Restore to ROW_DISPLAY_SHOW ('flex') — not '' — to guarantee
+     the row renders correctly regardless of what the browser's
+     own default is for a <div>. */
+  visible.forEach(function(r, i) {
+    if (i >= start && i < end) {
+      r.style.display = ROW_DISPLAY_SHOW;
+    }
+  });
+
+  /* Update button states */
+  var btnPrev = document.getElementById('btn-prev');
+  var btnNext = document.getElementById('btn-next');
+  btnPrev.disabled = (currentPage <= 1);
+  btnNext.disabled = (currentPage >= maxPage);
 }
 
 document.getElementById('btn-prev').addEventListener('click', function() {
-  if (currentPage > 1) { currentPage--; renderPage(); }
+  if (currentPage > 1) {
+    currentPage--;
+    renderPage();
+  }
 });
+
 document.getElementById('btn-next').addEventListener('click', function() {
-  currentPage++;
-  renderPage();
+  var allRows = Array.from(tbody.querySelectorAll('.tbody-row'));
+  var visible = allRows.filter(function(r) { return r.dataset.hidden === ''; });
+  var maxPage = Math.max(1, Math.ceil(visible.length / ROWS_PER_PAGE));
+  if (currentPage < maxPage) {
+    currentPage++;
+    renderPage();
+  }
 });
 
 /* ─────────────────────────────────────────────────────────────
