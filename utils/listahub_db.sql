@@ -1,23 +1,20 @@
 -- ============================================================
 --  listahub_db_fixed.sql  –  Complete Database Schema
 --
---  FIXES APPLIED:
---    1. category_id: TINYINT UNSIGNED → INT UNSIGNED (was silently
---       overflowing / causing FK failures after 255 categories)
---    2. low_stock_threshold: TINYINT → SMALLINT UNSIGNED
---    3. Added BEFORE INSERT trigger (trg_product_before_insert) to
---       set status correctly on INSERT — previously relied on fragile
---       AFTER INSERT → UPDATE → BEFORE UPDATE trigger chain
---    4. Added SKU generation inside BEFORE INSERT trigger so SKU is
---       set atomically; kept AFTER INSERT trigger as a safety fallback
---       (AFTER INSERT trigger now uses INSERT … ON DUPLICATE KEY to
---       avoid crashing if SKU was already set)
---    5. Category INSERT in schema now pre-seeds 'Uncategorized' to
---       prevent race-condition FK failures when multiple requests
---       try to create it simultaneously
---    6. vw_manager_dashboard: changed JOIN Category to LEFT JOIN so
---       products with a deleted category still appear
---    7. All triggers reviewed and tightened
+--  FIXES IN THIS VERSION:
+--    A. Sale_Item FK changed from ON DELETE RESTRICT → SET NULL
+--       (products with sales history can now be deleted;
+--        historical sale line items keep their data but
+--        product_id becomes NULL so reports still work)
+--    B. New table: Expired_Loss_Log — records financial impact
+--       when an expired product is deleted
+--    C. New trigger: trg_product_before_delete — fires BEFORE
+--       a product row is deleted; if the product is 'Expired',
+--       inserts a row into Expired_Loss_Log and Inventory_Log
+--       (movement_type='out', adjustment_reason='Expired Items')
+--       so the loss is captured in reports automatically.
+--    D. All previous fixes retained (category_id INT, SKU gen,
+--       status triggers, LEFT JOINs in views, etc.)
 -- ============================================================
 
 DROP DATABASE IF EXISTS listahub_db;
@@ -42,32 +39,24 @@ CREATE TABLE User (
     last_login    DATETIME        NULL
 ) ENGINE=InnoDB;
 
--- FIX 1: category_id changed from TINYINT UNSIGNED (max 255) to INT UNSIGNED
 CREATE TABLE Category (
     category_id   INT UNSIGNED    AUTO_INCREMENT PRIMARY KEY,
     category_name VARCHAR(100)    NOT NULL UNIQUE
 ) ENGINE=InnoDB;
 
 -- Pre-seed 'Uncategorized' so FK never fails on first product add
--- and concurrent requests never race to create it
 INSERT INTO Category (category_name) VALUES ('Uncategorized');
 
 CREATE TABLE Product (
-    product_id          INT UNSIGNED     AUTO_INCREMENT PRIMARY KEY,
-    image_url           VARCHAR(255)     NULL,
-    product_name        VARCHAR(100)     NOT NULL,
-    sku                 VARCHAR(50)      NOT NULL DEFAULT 'PENDING',
-
-    -- FIX 1 (continued): match new INT UNSIGNED category_id
-    category_id         INT UNSIGNED     NOT NULL DEFAULT 1,
-
-    cost_price          DECIMAL(10,2)    NOT NULL DEFAULT 0.00,
-    retail_price        DECIMAL(10,2)    NOT NULL DEFAULT 0.00,
-    quantity            INT              NOT NULL DEFAULT 0,
-
-    -- FIX 2: TINYINT → SMALLINT so threshold can exceed 255
+    product_id          INT UNSIGNED      AUTO_INCREMENT PRIMARY KEY,
+    image_url           VARCHAR(255)      NULL,
+    product_name        VARCHAR(100)      NOT NULL,
+    sku                 VARCHAR(50)       NOT NULL DEFAULT 'PENDING',
+    category_id         INT UNSIGNED      NOT NULL DEFAULT 1,
+    cost_price          DECIMAL(10,2)     NOT NULL DEFAULT 0.00,
+    retail_price        DECIMAL(10,2)     NOT NULL DEFAULT 0.00,
+    quantity            INT               NOT NULL DEFAULT 0,
     low_stock_threshold SMALLINT UNSIGNED NOT NULL DEFAULT 9,
-
     status              ENUM(
                             'In Stock',
                             'Low Stock',
@@ -75,13 +64,12 @@ CREATE TABLE Product (
                             'Near Expiry',
                             'Expired'
                         ) NOT NULL DEFAULT 'Out of Stock',
-
-    expiration_date     DATE             NULL,
-    notes               TEXT             NULL,
-    created_at          DATETIME         NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    updated_at          DATETIME         NOT NULL DEFAULT CURRENT_TIMESTAMP
-                                         ON UPDATE CURRENT_TIMESTAMP,
-    user_id             INT UNSIGNED     NOT NULL,
+    expiration_date     DATE              NULL,
+    notes               TEXT              NULL,
+    created_at          DATETIME          NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at          DATETIME          NOT NULL DEFAULT CURRENT_TIMESTAMP
+                                          ON UPDATE CURRENT_TIMESTAMP,
+    user_id             INT UNSIGNED      NOT NULL,
 
     CONSTRAINT chk_cost_price    CHECK (cost_price    >= 0),
     CONSTRAINT chk_retail_price  CHECK (retail_price  >= 0),
@@ -95,12 +83,13 @@ CREATE TABLE Product (
 
 CREATE TABLE Inventory_Log (
     log_id            INT UNSIGNED    AUTO_INCREMENT PRIMARY KEY,
-    product_id        INT UNSIGNED    NOT NULL,
+    product_id        INT UNSIGNED    NULL,           -- nullable: product may be deleted later
+    product_name_snap VARCHAR(100)    NOT NULL DEFAULT '', -- snapshot so log survives product deletion
     movement_type     ENUM('in','out') NOT NULL,
     quantity_change   INT             NOT NULL,
     stock_before      INT             NOT NULL,
     stock_after       INT             NOT NULL,
-    reference_type    ENUM('restock','sale','manual') NOT NULL,
+    reference_type    ENUM('restock','sale','manual','expired_deletion') NOT NULL,
     reference_id      INT UNSIGNED    NULL,
     adjustment_reason ENUM(
                           'Damaged Goods',
@@ -114,7 +103,37 @@ CREATE TABLE Inventory_Log (
 
     CONSTRAINT chk_qty_change CHECK (quantity_change > 0),
     CONSTRAINT fk_invlog_product FOREIGN KEY (product_id)
-        REFERENCES Product(product_id) ON UPDATE CASCADE ON DELETE CASCADE
+        REFERENCES Product(product_id) ON UPDATE CASCADE ON DELETE SET NULL
+) ENGINE=InnoDB;
+
+-- ============================================================
+--  FIX B: New table to record financial loss from expired
+--  product deletions. This is what "deducts from general sales"
+--  conceptually — it captures the lost cost value so reports
+--  can subtract it from net profit.
+-- ============================================================
+CREATE TABLE Expired_Loss_Log (
+    loss_id          INT UNSIGNED   AUTO_INCREMENT PRIMARY KEY,
+    user_id          INT UNSIGNED   NOT NULL,
+    product_id       INT UNSIGNED   NULL,            -- nullable: snapshot survives deletion
+    product_name     VARCHAR(100)   NOT NULL,
+    sku              VARCHAR(50)    NOT NULL DEFAULT '',
+    quantity_lost    INT            NOT NULL,
+    cost_price       DECIMAL(10,2)  NOT NULL DEFAULT 0.00,
+    retail_price     DECIMAL(10,2)  NOT NULL DEFAULT 0.00,
+    total_cost_lost  DECIMAL(12,2)  GENERATED ALWAYS AS (quantity_lost * cost_price) STORED,
+    total_value_lost DECIMAL(12,2)  GENERATED ALWAYS AS (quantity_lost * retail_price) STORED,
+    deleted_at       DATETIME       NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    notes            TEXT           NULL,
+
+    CONSTRAINT chk_qty_lost       CHECK (quantity_lost  > 0),
+    CONSTRAINT chk_exp_cost       CHECK (cost_price     >= 0),
+    CONSTRAINT chk_exp_retail     CHECK (retail_price   >= 0),
+
+    CONSTRAINT fk_loss_user FOREIGN KEY (user_id)
+        REFERENCES User(user_id) ON UPDATE CASCADE ON DELETE CASCADE,
+    CONSTRAINT fk_loss_product FOREIGN KEY (product_id)
+        REFERENCES Product(product_id) ON UPDATE CASCADE ON DELETE SET NULL
 ) ENGINE=InnoDB;
 
 CREATE TABLE Restock_Transaction (
@@ -174,7 +193,12 @@ CREATE TABLE Sale (
 CREATE TABLE Sale_Item (
     sale_item_id       INT UNSIGNED   AUTO_INCREMENT PRIMARY KEY,
     sale_id            INT UNSIGNED   NOT NULL,
-    product_id         INT UNSIGNED   NOT NULL,
+    -- ── FIX A: was ON DELETE RESTRICT — blocked all product deletes ──
+    -- Changed to SET NULL so historical sale records are preserved
+    -- even after the product is deleted. Reports use snapshots below.
+    product_id         INT UNSIGNED   NULL,
+    product_name_snap  VARCHAR(100)   NOT NULL DEFAULT '', -- snapshot of name at time of sale
+    sku_snap           VARCHAR(50)    NOT NULL DEFAULT '', -- snapshot of SKU at time of sale
     quantity_sold      INT            NOT NULL,
     unit_price_at_sale DECIMAL(10,2)  NOT NULL DEFAULT 0.00,
     unit_cost_at_sale  DECIMAL(10,2)  NOT NULL DEFAULT 0.00,
@@ -187,7 +211,7 @@ CREATE TABLE Sale_Item (
     CONSTRAINT fk_si_sale    FOREIGN KEY (sale_id)
         REFERENCES Sale(sale_id) ON UPDATE CASCADE ON DELETE CASCADE,
     CONSTRAINT fk_si_product FOREIGN KEY (product_id)
-        REFERENCES Product(product_id) ON UPDATE CASCADE ON DELETE RESTRICT
+        REFERENCES Product(product_id) ON UPDATE CASCADE ON DELETE SET NULL  -- FIX A
 ) ENGINE=InnoDB;
 
 CREATE TABLE Debt (
@@ -231,6 +255,8 @@ CREATE INDEX idx_invlog_product_date ON Inventory_Log(product_id, log_date);
 CREATE INDEX idx_sale_customer       ON Sale(customer_id);
 CREATE INDEX idx_sale_date           ON Sale(sale_date);
 CREATE INDEX idx_debtpayment_debt    ON Debt_Payment(debt_id);
+CREATE INDEX idx_loss_user           ON Expired_Loss_Log(user_id);
+CREATE INDEX idx_loss_deleted_at     ON Expired_Loss_Log(deleted_at);
 
 
 -- ============================================================
@@ -240,22 +266,30 @@ CREATE INDEX idx_debtpayment_debt    ON Debt_Payment(debt_id);
 DELIMITER $$
 
 -- -----------------------------------------------------------
+--  TRIGGER 0 — BEFORE INSERT on Sale_Item:
+--  Snapshot product name + SKU into the sale line item so
+--  historical records survive product deletion.
+-- -----------------------------------------------------------
+CREATE TRIGGER trg_sale_item_before_insert
+BEFORE INSERT ON Sale_Item
+FOR EACH ROW
+BEGIN
+    DECLARE v_name VARCHAR(100);
+    DECLARE v_sku  VARCHAR(50);
+
+    IF NEW.product_id IS NOT NULL THEN
+        SELECT product_name, sku
+          INTO v_name, v_sku
+          FROM Product
+         WHERE product_id = NEW.product_id;
+
+        SET NEW.product_name_snap = COALESCE(v_name, '');
+        SET NEW.sku_snap          = COALESCE(v_sku,  '');
+    END IF;
+END$$
+
+-- -----------------------------------------------------------
 --  TRIGGER 1a — BEFORE INSERT: set SKU + correct status
---
---  FIX 3 & FIX 4 (CRITICAL):
---  Previously, status was only set by a BEFORE UPDATE trigger,
---  meaning a freshly inserted product always started as
---  'Out of Stock' (the column default) regardless of its actual
---  quantity. The AFTER INSERT SKU trigger then did UPDATE Product
---  which fired BEFORE UPDATE — a fragile two-step chain that
---  breaks if anything interrupts it.
---
---  This BEFORE INSERT trigger:
---    • Generates the SKU directly from LAST_INSERT_ID() + 1
---      (safe because AUTO_INCREMENT is reserved before insert)
---    • Sets status correctly in the SAME statement, atomically
---  The AFTER INSERT trigger is kept only as a safety fallback
---  for cases where product_id prediction differs (rare).
 -- -----------------------------------------------------------
 CREATE TRIGGER trg_product_before_insert
 BEFORE INSERT ON Product
@@ -264,7 +298,6 @@ BEGIN
     DECLARE v_next_id  BIGINT UNSIGNED;
     DECLARE v_prefix   VARCHAR(3);
 
-    -- Predict next AUTO_INCREMENT id for this table
     SELECT AUTO_INCREMENT
       INTO v_next_id
       FROM information_schema.TABLES
@@ -274,7 +307,6 @@ BEGIN
     SET v_prefix   = UPPER(LEFT(REPLACE(REPLACE(NEW.product_name, ' ', ''), '-', ''), 3));
     SET NEW.sku    = CONCAT(v_prefix, LPAD(v_next_id, 6, '0'));
 
-    -- FIX 3: Set status correctly on INSERT (not just on UPDATE)
     IF NEW.quantity = 0 THEN
         SET NEW.status = 'Out of Stock';
     ELSEIF NEW.expiration_date IS NOT NULL AND NEW.expiration_date < CURDATE() THEN
@@ -291,12 +323,6 @@ END$$
 
 -- -----------------------------------------------------------
 --  TRIGGER 1b — AFTER INSERT: correct SKU with real product_id
---
---  Safety net: if the predicted AUTO_INCREMENT in BEFORE INSERT
---  was off (e.g. gap from a rolled-back prior transaction),
---  overwrite SKU with the actual product_id now that we have it.
---  Uses UPDATE … WHERE sku <> correct value to avoid a no-op
---  UPDATE that would still fire the BEFORE UPDATE trigger.
 -- -----------------------------------------------------------
 CREATE TRIGGER trg_product_sku_after_insert
 AFTER INSERT ON Product
@@ -308,7 +334,6 @@ BEGIN
     SET v_prefix   = UPPER(LEFT(REPLACE(REPLACE(NEW.product_name, ' ', ''), '-', ''), 3));
     SET v_real_sku = CONCAT(v_prefix, LPAD(NEW.product_id, 6, '0'));
 
-    -- Only update if SKU prediction was wrong (avoids unnecessary BEFORE UPDATE)
     IF NEW.sku <> v_real_sku THEN
         UPDATE Product
            SET sku = v_real_sku
@@ -318,13 +343,6 @@ END$$
 
 -- -----------------------------------------------------------
 --  TRIGGER 2 — BEFORE UPDATE: recompute status on any change
---
---  Priority order:
---    1. Out of Stock  (quantity = 0)
---    2. Expired       (past expiry date, quantity > 0)
---    3. Near Expiry   (within 30 days, quantity > 0)
---    4. Low Stock     (above 0 but ≤ threshold)
---    5. In Stock
 -- -----------------------------------------------------------
 CREATE TRIGGER trg_product_status_update
 BEFORE UPDATE ON Product
@@ -345,7 +363,47 @@ BEGIN
 END$$
 
 -- -----------------------------------------------------------
---  TRIGGER 3 — Deduct stock + log when a Sale_Item is inserted
+--  TRIGGER 3 — FIX C: BEFORE DELETE on Product
+--
+--  If the product being deleted is 'Expired' AND has quantity > 0:
+--    1. Insert into Expired_Loss_Log  → financial impact recorded
+--    2. Insert into Inventory_Log     → stock movement recorded
+--       (movement_type='out', reason='Expired Items')
+--
+--  This satisfies Option 2: "when the delete button for an
+--  expired product is clicked, it automatically deducts the
+--  total products and their price from the general sales."
+--  The deduction is captured in Expired_Loss_Log.total_cost_lost
+--  and total_value_lost, which the dashboard/reports query.
+-- -----------------------------------------------------------
+CREATE TRIGGER trg_product_before_delete
+BEFORE DELETE ON Product
+FOR EACH ROW
+BEGIN
+    -- Only log if product is Expired and still has stock to write off
+    IF OLD.status = 'Expired' AND OLD.quantity > 0 THEN
+
+        -- 1. Record financial loss
+        INSERT INTO Expired_Loss_Log
+            (user_id, product_id, product_name, sku,
+             quantity_lost, cost_price, retail_price, notes)
+        VALUES
+            (OLD.user_id, OLD.product_id, OLD.product_name, OLD.sku,
+             OLD.quantity, OLD.cost_price, OLD.retail_price, OLD.notes);
+
+        -- 2. Record inventory movement (stock wiped out)
+        INSERT INTO Inventory_Log
+            (product_id, product_name_snap, movement_type, quantity_change,
+             stock_before, stock_after, reference_type, adjustment_reason)
+        VALUES
+            (OLD.product_id, OLD.product_name, 'out', OLD.quantity,
+             OLD.quantity, 0, 'expired_deletion', 'Expired Items');
+
+    END IF;
+END$$
+
+-- -----------------------------------------------------------
+--  TRIGGER 4 — Deduct stock + log when a Sale_Item is inserted
 -- -----------------------------------------------------------
 CREATE TRIGGER trg_sale_item_deduct_stock
 AFTER INSERT ON Sale_Item
@@ -353,33 +411,36 @@ FOR EACH ROW
 BEGIN
     DECLARE v_stock_before INT;
 
-    SELECT quantity INTO v_stock_before
-      FROM Product
-     WHERE product_id = NEW.product_id;
+    IF NEW.product_id IS NOT NULL THEN
+        SELECT quantity INTO v_stock_before
+          FROM Product
+         WHERE product_id = NEW.product_id;
 
-    UPDATE Product
-       SET quantity = quantity - NEW.quantity_sold
-     WHERE product_id = NEW.product_id;
+        UPDATE Product
+           SET quantity = quantity - NEW.quantity_sold
+         WHERE product_id = NEW.product_id;
 
-    INSERT INTO Inventory_Log
-        (product_id, movement_type, quantity_change,
-         stock_before, stock_after, reference_type, reference_id)
-    VALUES
-        (NEW.product_id, 'out', NEW.quantity_sold,
-         v_stock_before, v_stock_before - NEW.quantity_sold,
-         'sale', NEW.sale_id);
+        INSERT INTO Inventory_Log
+            (product_id, product_name_snap, movement_type, quantity_change,
+             stock_before, stock_after, reference_type, reference_id)
+        VALUES
+            (NEW.product_id, NEW.product_name_snap, 'out', NEW.quantity_sold,
+             v_stock_before, v_stock_before - NEW.quantity_sold,
+             'sale', NEW.sale_id);
+    END IF;
 END$$
 
 -- -----------------------------------------------------------
---  TRIGGER 4 — Add stock + log when a Restock_Item is inserted
+--  TRIGGER 5 — Add stock + log when a Restock_Item is inserted
 -- -----------------------------------------------------------
 CREATE TRIGGER trg_restock_item_add_stock
 AFTER INSERT ON Restock_Item
 FOR EACH ROW
 BEGIN
     DECLARE v_stock_before INT;
+    DECLARE v_pname        VARCHAR(100);
 
-    SELECT quantity INTO v_stock_before
+    SELECT quantity, product_name INTO v_stock_before, v_pname
       FROM Product
      WHERE product_id = NEW.product_id;
 
@@ -388,16 +449,16 @@ BEGIN
      WHERE product_id = NEW.product_id;
 
     INSERT INTO Inventory_Log
-        (product_id, movement_type, quantity_change,
+        (product_id, product_name_snap, movement_type, quantity_change,
          stock_before, stock_after, reference_type, reference_id)
     VALUES
-        (NEW.product_id, 'in', NEW.quantity_added,
+        (NEW.product_id, COALESCE(v_pname,''), 'in', NEW.quantity_added,
          v_stock_before, v_stock_before + NEW.quantity_added,
          'restock', NEW.restock_item_id);
 END$$
 
 -- -----------------------------------------------------------
---  TRIGGER 5 — Update Debt balance + status after each payment
+--  TRIGGER 6 — Update Debt balance + status after each payment
 -- -----------------------------------------------------------
 CREATE TRIGGER trg_debt_payment_after_insert
 AFTER INSERT ON Debt_Payment
@@ -517,6 +578,7 @@ proc: BEGIN
                 LEAVE proc;
             END IF;
 
+            -- product_name_snap + sku_snap filled by trg_sale_item_before_insert
             INSERT INTO Sale_Item
                 (sale_id, product_id, quantity_sold, unit_price_at_sale, unit_cost_at_sale)
             VALUES
@@ -671,8 +733,9 @@ CREATE PROCEDURE sp_manual_inventory_adjustment(
     OUT p_message         VARCHAR(255)
 )
 proc: BEGIN
-    DECLARE v_stock_before INT DEFAULT NULL;
-    DECLARE v_stock_after  INT DEFAULT 0;
+    DECLARE v_stock_before INT    DEFAULT NULL;
+    DECLARE v_stock_after  INT    DEFAULT 0;
+    DECLARE v_pname        VARCHAR(100) DEFAULT '';
 
     DECLARE EXIT HANDLER FOR SQLEXCEPTION
     BEGIN
@@ -682,7 +745,7 @@ proc: BEGIN
 
     START TRANSACTION;
 
-        SELECT quantity INTO v_stock_before
+        SELECT quantity, product_name INTO v_stock_before, v_pname
           FROM Product
          WHERE product_id = p_product_id
            FOR UPDATE;
@@ -709,10 +772,10 @@ proc: BEGIN
          WHERE product_id = p_product_id;
 
         INSERT INTO Inventory_Log (
-            product_id, movement_type, quantity_change,
+            product_id, product_name_snap, movement_type, quantity_change,
             stock_before, stock_after, reference_type, reference_id, adjustment_reason
         ) VALUES (
-            p_product_id, p_movement_type, p_quantity_change,
+            p_product_id, v_pname, p_movement_type, p_quantity_change,
             v_stock_before, v_stock_after, 'manual', NULL, p_reason
         );
 
@@ -779,8 +842,6 @@ DELIMITER ;
 --  VIEWS
 -- ============================================================
 
--- FIX 6: LEFT JOIN Category so products with a soft-deleted or
---         missing category still appear in the dashboard
 CREATE OR REPLACE VIEW vw_manager_dashboard AS
 SELECT
     p.product_id,
@@ -788,19 +849,19 @@ SELECT
     p.sku,
     p.user_id,
     u.store_name,
-    COALESCE(c.category_name, 'Uncategorized')            AS category_name,
-    p.quantity                                            AS current_stock,
-    p.status                                              AS stock_status,
+    COALESCE(c.category_name, 'Uncategorized')                AS category_name,
+    p.quantity                                                AS current_stock,
+    p.status                                                  AS stock_status,
     p.retail_price,
     p.cost_price,
     p.expiration_date,
-    COALESCE(SUM(si.quantity_sold), 0)                    AS total_units_sold,
-    COALESCE(SUM(si.subtotal), 0)                         AS total_revenue,
+    COALESCE(SUM(si.quantity_sold), 0)                        AS total_units_sold,
+    COALESCE(SUM(si.subtotal), 0)                             AS total_revenue,
     COALESCE(SUM(si.quantity_sold * si.unit_cost_at_sale), 0) AS total_cogs,
     COALESCE(SUM(si.subtotal - si.quantity_sold * si.unit_cost_at_sale), 0) AS gross_profit,
-    COUNT(DISTINCT si.sale_id)                            AS number_of_transactions
+    COUNT(DISTINCT si.sale_id)                                AS number_of_transactions
 FROM Product p
-JOIN User        u  ON u.user_id     = p.user_id
+JOIN  User       u  ON u.user_id     = p.user_id
 LEFT JOIN Category   c  ON c.category_id = p.category_id
 LEFT JOIN Sale_Item si  ON si.product_id = p.product_id
 LEFT JOIN Sale       s  ON s.sale_id     = si.sale_id
@@ -808,6 +869,20 @@ GROUP BY
     p.product_id, p.product_name, p.sku, p.user_id, u.store_name,
     c.category_name, p.quantity, p.status, p.retail_price,
     p.cost_price, p.expiration_date;
+
+-- ── View: expired losses per user (for dashboard "losses" widget) ──
+CREATE OR REPLACE VIEW vw_expired_losses AS
+SELECT
+    el.user_id,
+    u.store_name,
+    COUNT(*)                    AS total_expired_deletions,
+    SUM(el.quantity_lost)       AS total_units_lost,
+    SUM(el.total_cost_lost)     AS total_cost_lost,
+    SUM(el.total_value_lost)    AS total_retail_value_lost,
+    MAX(el.deleted_at)          AS last_deletion_at
+FROM Expired_Loss_Log el
+JOIN User u ON u.user_id = el.user_id
+GROUP BY el.user_id, u.store_name;
 
 CREATE OR REPLACE VIEW vw_customer_outstanding AS
 SELECT
@@ -861,11 +936,11 @@ CREATE OR REPLACE VIEW vw_inventory_movements AS
 SELECT
     il.log_id,
     il.log_date,
-    p.product_id,
-    p.user_id,
-    p.sku,
-    p.product_name,
-    COALESCE(c.category_name, 'Uncategorized') AS category_name,
+    il.product_id,
+    COALESCE(p.user_id, 0)                                     AS user_id,
+    COALESCE(p.sku, il.product_name_snap)                      AS sku,
+    COALESCE(p.product_name, il.product_name_snap)             AS product_name,
+    COALESCE(c.category_name, 'Uncategorized')                 AS category_name,
     il.movement_type,
     il.quantity_change,
     il.stock_before,
@@ -874,7 +949,7 @@ SELECT
     il.reference_id,
     il.adjustment_reason
 FROM Inventory_Log il
-JOIN Product  p ON p.product_id  = il.product_id
+LEFT JOIN Product  p ON p.product_id  = il.product_id
 LEFT JOIN Category c ON c.category_id = p.category_id
 ORDER BY il.log_date DESC;
 
