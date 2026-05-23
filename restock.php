@@ -204,36 +204,33 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     ]);
                 }
 
-                // Log the edit to Inventory_Log (manual adjustment)
-                $qty_diff = $quantity - $old_qty;
-                if ($qty_diff !== 0) {
-                    $move_type = $qty_diff > 0 ? 'in' : 'out';
-                    $qty_change = abs($qty_diff);
+                // Log the edit to Inventory_Log
+                try {
+                    $qty_diff    = $quantity - $old_qty;
+                    $move_type   = $qty_diff >= 0 ? 'in' : 'out';
+                    $qty_change  = abs($qty_diff) > 0 ? abs($qty_diff) : 1;
+                    $stock_after = $qty_diff !== 0 ? $quantity : $old_qty;
+
                     $logStmt = $pdo->prepare(
                         "INSERT INTO Inventory_Log
-                            (product_id, user_id, product_name_snap, movement_type, quantity_change,
-                            stock_before, stock_after, reference_type, adjustment_reason)
-                        VALUES (:pid, :uid, :pname, :move, :change, :before, :after, 'manual', 'Stock Count Correction')"
+                            (product_id, product_name_snap, movement_type,
+                             quantity_change, stock_before, stock_after,
+                             reference_type, adjustment_reason)
+                         VALUES
+                            (:pid, :pname, :move,
+                             :change, :before, :after,
+                             'product_edit', NULL)"
                     );
                     $logStmt->execute([
                         ':pid'    => $product_id,
-                        ':uid'    => $user_id,
-                        ':pname'  => $old_name,
+                        ':pname'  => $product_name,
                         ':move'   => $move_type,
                         ':change' => $qty_change,
                         ':before' => $old_qty,
-                        ':after'  => $quantity,
+                        ':after'  => $stock_after,
                     ]);
-                } else {
-                    // Even if qty unchanged, log the edit with 1-unit placeholder for traceability
-                    $logStmt = $pdo->prepare(
-                        "INSERT INTO Inventory_Log
-                            (product_id, product_name_snap, movement_type, quantity_change,
-                             stock_before, stock_after, reference_type, adjustment_reason)
-                         VALUES (:pid, :pname, 'in', 0, :before, :after, 'manual', 'Stock Count Correction')"
-                    );
-                    // quantity_change must be > 0 per CHECK constraint, skip log if truly no change
-                    // (Only log when qty actually changed)
+                } catch (PDOException $logEx) {
+                    error_log("Restock edit log error: " . $logEx->getMessage());
                 }
 
                 $pdo->commit();

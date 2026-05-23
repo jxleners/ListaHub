@@ -1,0 +1,2 @@
+[23-May-2026 14:57:45 Europe/Berlin] EDIT DEBUG: product_id=7 old_qty=17 new_qty=17 diff=0
+[23-May-2026 14:57:45 Europe/Berlin] EDIT DEBUG: qty unchanged, no log inserted

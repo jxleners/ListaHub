@@ -6,6 +6,11 @@
 //  Edit Product opens as an INLINE OVERLAY (edit overlay).
 //  Requirements: Prepared statements, try-catch, session guard
 // ============================================================
+
+ini_set('display_errors', 1);
+ini_set('display_startup_errors', 1);
+error_reporting(E_ALL);
+ini_set('error_log', __DIR__ . '/debug_log.txt');
 session_start();
 if (!isset($_SESSION['user_id'])) {
     header("Location: index.php");
@@ -155,6 +160,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     // Log product addition
                     try {
                         $pdo2 = getPDO();
+                        if ($quantity > 0) {
                         $logStmt = $pdo2->prepare(
                             "INSERT INTO Inventory_Log
                                 (product_id, user_id, product_name_snap, movement_type, quantity_change,
@@ -163,11 +169,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         );
                         $logStmt->execute([
                             ':pid'   => $new_id,
-                            ':uid'   => $user_id,
                             ':pname' => $product_name,
                             ':qty'   => max(1, $quantity),
                             ':qty2'  => $quantity,
                         ]);
+                    }
                     } catch (PDOException $e) {
                         error_log("Product addition log error: " . $e->getMessage());
                     }
@@ -295,19 +301,60 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     // Log product edit
                     try {
                         $pdo2 = getPDO();
+                        // Only log if quantity actually changed
+                    $qty_after_update = $quantity;
+                    if ($qty_after_update !== $old_qty) {
+                        $qty_diff   = $qty_after_update - $old_qty;
+                        $move_type  = $qty_diff > 0 ? 'in' : 'out';
+                        $qty_change = abs($qty_diff);
                         $logStmt = $pdo2->prepare(
                             "INSERT INTO Inventory_Log
-                                (product_id, user_id, product_name_snap, movement_type, quantity_change,
+                                (product_id, product_name_snap, movement_type, quantity_change,
                                  stock_before, stock_after, reference_type, adjustment_reason)
-                             VALUES (:pid, :uid, :pname, 'in', 1, 0, 0, 'product_edit', NULL)"
+                             VALUES (:pid, :pname, 'in', :qty, 0, :qty2, 'product_addition', NULL)"
                         );
                         $logStmt->execute([
-                            ':pid'   => $product_id,
-                            ':uid'   => $user_id,
-                            ':pname' => $product_name,
+                            ':pid'    => $product_id,
+                            ':uid'    => $user_id,
+                            ':pname'  => $product_name,
+                            ':move'   => $move_type,
+                            ':change' => $qty_change,
+                            ':before' => $old_qty,
+                            ':after'  => $qty_after_update,
                         ]);
+                    }
                     } catch (PDOException $e) {
                         error_log("Product edit log error: " . $e->getMessage());
+                    }
+
+                    // Log the edit to Inventory_Log
+                    try {
+                        $pdo3 = getPDO();
+                        $qty_diff   = $quantity - $old_qty;
+                        $move_type  = $qty_diff >= 0 ? 'in' : 'out';
+                        $qty_change = abs($qty_diff) > 0 ? abs($qty_diff) : 1;
+                        $stock_after = $qty_diff !== 0 ? $quantity : $old_qty;
+
+                        $logStmt = $pdo3->prepare(
+                            "INSERT INTO Inventory_Log
+                                (product_id, product_name_snap, movement_type,
+                                 quantity_change, stock_before, stock_after,
+                                 reference_type, adjustment_reason)
+                             VALUES
+                                (:pid, :pname, :move,
+                                 :change, :before, :after,
+                                 'product_edit', NULL)"
+                        );
+                        $logStmt->execute([
+                            ':pid'    => $product_id,
+                            ':pname'  => $product_name,
+                            ':move'   => $move_type,
+                            ':change' => $qty_change,
+                            ':before' => $old_qty,
+                            ':after'  => $stock_after,
+                        ]);
+                    } catch (PDOException $logEx) {
+                        error_log("Edit log error: " . $logEx->getMessage());
                     }
 
                     $edit_flash_msg  = 'Product updated successfully!';
