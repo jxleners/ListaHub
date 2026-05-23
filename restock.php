@@ -985,7 +985,7 @@ $activePage = 'restock';
                     <td class="td-expiry">
                       <div class="expiry-wrap">
                         <span><?= $expiryDisplay ?></span>
-                        <i class="bi bi-calendar3"></i>
+                        
                       </div>
                     </td>
 
@@ -1127,7 +1127,7 @@ $activePage = 'restock';
             <div class="eo-label">Expiry Date</div>
             <div class="eo-expiry-wrap">
               <div class="eo-date-picker">
-                <i class="bi bi-calendar3"></i>
+                
                 <input type="date" id="eo-expiry" name="expiry_date"/>
               </div>
               <div class="eo-none-part">
@@ -1144,8 +1144,8 @@ $activePage = 'restock';
           <div class="eo-field-group">
             <div class="eo-label">Stock Quantity</div>
             <div class="eo-input-field">
-              <input type="number" id="eo-qty" name="stock_quantity"
-                     placeholder="0" min="0" value="0"/>
+              <input type="number" id="eo-qty" name="stock_quantity" min="1" required/>
+                      
             </div>
           </div>
           <div class="eo-field-group">
@@ -1153,7 +1153,7 @@ $activePage = 'restock';
             <div class="eo-input-field">
               <span class="eo-peso">₱</span>
               <input type="number" id="eo-cost" name="cost"
-                     placeholder="0" step="0.01" min="0" value="0"/>
+                      step="0.01" min="1" required/>
             </div>
           </div>
           <div class="eo-field-group">
@@ -1161,7 +1161,7 @@ $activePage = 'restock';
             <div class="eo-input-field">
               <span class="eo-peso">₱</span>
               <input type="number" id="eo-retail" name="selling_price"
-                     placeholder="0" step="0.01" min="0" value="0"/>
+                     step="0.01" min="1" required/>
             </div>
           </div>
         </div>
@@ -1292,6 +1292,39 @@ function changeQty(inputId, delta) {
   if (val < 0) val = 0;
   input.value = val;
 }
+/* ─────────────────────────────────────────────────────────────
+   Expiry Date required: must have a date OR "None" checked
+───────────────────────────────────────────────────────────── */
+function validateExpiryRequired(formId, dateInputId, checkboxId) {
+  var form     = document.getElementById(formId);
+  if (!form) return;
+
+  form.addEventListener('submit', function(e) {
+    var dateInput = document.getElementById(dateInputId);
+    var checkbox  = document.getElementById(checkboxId);
+
+    var hasDate    = dateInput && dateInput.value.trim() !== '';
+    var noneChecked = checkbox && checkbox.checked;
+
+    if (!hasDate && !noneChecked) {
+      e.preventDefault();
+      dateInput.setCustomValidity('Please enter an expiry date or check "None".');
+      dateInput.reportValidity();
+    } else {
+      if (dateInput) dateInput.setCustomValidity('');
+    }
+  });
+
+  // Clear error once user picks a date
+  var dateInput = document.getElementById(dateInputId);
+  if (dateInput) {
+    dateInput.addEventListener('change', function() {
+      this.setCustomValidity('');
+    });
+  }
+}
+
+validateExpiryRequired('edit-product-form', 'eo-expiry', 'eo-no-expiry');
 
 /* ── Complete (batch restock) ────────────────────────────── */
 function handleComplete(e) {

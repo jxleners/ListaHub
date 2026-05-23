@@ -134,7 +134,7 @@ $activePage = 'pos';
               </div>
             </div>
           </div>
-          <div class="table-scroll-indicator"></div>
+    
         </div>
 
         <div class="pagination">

@@ -362,16 +362,7 @@ body {
   width: 100%;
 }
 
-.table-scroll-indicator {
-  height: 50px;
-  width: 3px;
-  border-radius: 5px;
-  background-color: var(--2-brown);
-  align-self: center;
-  flex-shrink: 0;
-  margin: 0 2px;
-  opacity: 0.3;
-}
+
 
 /* ── Pagination ── */
 .pagination {
@@ -537,8 +528,8 @@ body {
   color: var(--color-black);
   transition: background 0.15s;
 }
-.btn-cash.active { background-color: var(--color-mediumseagreen); }
-.btn-cash:hover  { background-color: var(--color-mediumseagreen); }
+.btn-cash.active { background-color: var(--color-seagreen); }
+.btn-cash:hover  { background-color: var(--color-seagreen); }
 
 .pay-other-btns {
   display: flex;
@@ -596,6 +587,7 @@ body {
   outline: none;
   width: 100%;
   box-sizing: border-box;
+  text-align: center;
 }
 .tendered-input::placeholder { color: var(--2-brown); opacity: 0.45; }
 

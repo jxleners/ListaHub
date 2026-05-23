@@ -348,7 +348,7 @@ try {
     "SELECT
         SUM(CASE WHEN quantity = 0 THEN 1 ELSE 0 END)                                                          AS out_of_stock,
         SUM(CASE WHEN expiration_date IS NOT NULL AND expiration_date < CURDATE() THEN 1 ELSE 0 END)            AS expired,
-        SUM(CASE WHEN quantity > 0 AND quantity < low_stock_threshold THEN 1 ELSE 0 END) AS low_stock,
+        SUM(CASE WHEN status = 'Low Stock' THEN 1 ELSE 0 END) AS low_stock,
         SUM(CASE WHEN expiration_date IS NOT NULL
                   AND expiration_date BETWEEN CURDATE()
                   AND DATE_ADD(CURDATE(), INTERVAL 30 DAY) THEN 1 ELSE 0 END)                                  AS near_expiry
@@ -1217,135 +1217,134 @@ $activePage = 'manage-products';
      ADD PRODUCT OVERLAY
      ════════════════════════════════════════════════════════════ -->
 <div id="add-product-overlay" role="dialog" aria-modal="true" aria-label="Add Product">
-  <div class="add-modal-wrapper">
+  <div class="edit-modal-card">
 
-    <div class="modal-header">
-      <h2 class="modal-title">ADD PRODUCTS</h2>
-      <button class="btn-close-modal" type="button" onclick="closeAddOverlay()" title="Close">
+    <div class="edit-modal-header">
+      <h1 class="edit-modal-title">ADD PRODUCTS</h1>
+      <button class="edit-modal-close-btn" type="button" onclick="closeAddOverlay()" title="Close">
         <i class="bi bi-x-lg"></i>
       </button>
     </div>
 
-    <div
-      class="flash-message<?= $add_flash_msg ? ' show flash-' . $add_flash_type : '' ?>"
-      id="add-flash"
+    <div class="edit-flash<?= $add_flash_msg ? ' show flash-' . $add_flash_type : '' ?>"
+         id="add-flash"
     ><?= htmlspecialchars($add_flash_msg) ?></div>
 
-    <form
-      class="form-section"
-      method="post"
-      enctype="multipart/form-data"
-      id="add-product-form"
-    >
-      <input type="hidden" name="action" value="add"/>
+    <section class="edit-form-card">
+      <form method="post" enctype="multipart/form-data" id="add-product-form">
+        <input type="hidden" name="action" value="add"/>
 
-      <div class="top-fields-row">
-        <div class="img-upload-box" id="add-img-upload-box" title="Click to upload image">
-          <i class="bi bi-image-fill" style="font-size:64px;color:var(--1-brown);opacity:0.4;pointer-events:none;"></i>
-          <img class="img-upload-preview" id="add-img-preview" src="" alt="Preview"/>
-          <input
-            type="file"
-            name="product_image"
-            id="add-product-image-input"
-            accept="image/*"
-            onchange="previewAddImage(this)"
-          />
-        </div>
-
-        <div class="right-fields">
-          <div class="field-group" style="align-self:stretch;">
-            <label class="field-label" for="product-name">Product Name</label>
-            <div class="field-input">
-              <input
-                type="text"
-                id="product-name"
-                name="product_name"
-                placeholder="Enter Here"
-                required
-                autocomplete="off"
-              />
+        <div class="edit-top-row">
+          <div class="edit-img-box" id="add-img-box">
+            <div class="edit-img-placeholder" id="add-img-placeholder">
+              <i class="bi bi-image-fill"></i>
+              <span>Click to upload</span>
             </div>
+            <img class="preview" id="add-img-preview" src="" alt="Product Image"/>
+            <input
+              type="file"
+              name="product_image"
+              id="add-product-image-input"
+              accept="image/*"
+              onchange="previewAddImage(this)"
+            />
           </div>
 
-          <div class="field-group" style="align-self:stretch;">
-            <label class="field-label" for="product-category">Category</label>
-            <div class="field-input">
-              <input
-                type="text"
-                id="product-category"
-                name="category"
-                placeholder="Enter Here (leave blank for Uncategorized)"
-                list="cat-list"
-                autocomplete="off"
-              />
+          <div class="edit-right-fields">
+            <div class="edit-field-group">
+              <div class="edit-label">Product Name</div>
+              <div class="edit-input-field">
+                <input
+                  type="text"
+                  id="product-name"
+                  name="product_name"
+                  placeholder="Enter Here"
+                  required
+                  autocomplete="off"
+                />
+              </div>
             </div>
-          </div>
-        </div>
-      </div>
-
-      <div class="fields-row">
-        <div class="field-group">
-          <label class="field-label">SKU</label>
-          <div class="sku-field">
-            <span>Auto-generated on save</span>
-          </div>
-        </div>
-
-        <div class="field-group">
-          <label class="field-label" for="expiry-date">Expiry Date</label>
-          <div class="expiry-field-wrap">
-            <div class="expiry-date-part">
-              <i class="bi bi-calendar3"></i>
-              <input type="date" id="expiry-date" name="expiry_date"/>
-            </div>
-            <div class="none-checkbox-part">
-              <label for="no-expiry">None</label>
-              <input
-                type="checkbox"
-                id="no-expiry"
-                name="no_expiry"
-                onchange="toggleExpiry(this,'expiry-date')"
-              />
+            <div class="edit-field-group">
+              <div class="edit-label">Category</div>
+              <div class="edit-input-field">
+                <input
+                  type="text"
+                  id="product-category"
+                  name="category"
+                  placeholder="Enter Here (leave blank for Uncategorized)"
+                  list="cat-list"
+                  autocomplete="off"
+                />
+              </div>
             </div>
           </div>
         </div>
-      </div>
 
-      <div class="fields-row">
-        <div class="field-group">
-          <label class="field-label" for="stock-qty">Stock Quantity</label>
-          <div class="field-input">
-            <input type="number" id="stock-qty" name="stock_quantity" placeholder="Enter Here" min="0" value="0"/>
+        <div class="edit-fields-row" style="margin-top:8px;">
+          <div class="edit-field-group">
+            <div class="edit-label">SKU</div>
+            <div class="edit-sku-field">
+              <span>Auto-generated on save</span>
+            </div>
+          </div>
+          <div class="edit-field-group">
+            <div class="edit-label">Expiry Date</div>
+            <div class="edit-expiry-wrap">
+              <div class="edit-date-picker">
+                <input type="date" id="expiry-date" name="expiry_date"/>
+              </div>
+              <div class="edit-none-part">
+                <label for="no-expiry">None</label>
+                <input
+                  type="checkbox"
+                  id="no-expiry"
+                  name="no_expiry"
+                  onchange="toggleExpiry(this,'expiry-date')"
+                />
+              </div>
+            </div>
           </div>
         </div>
-        <div class="field-group">
-          <label class="field-label" for="cost-price">Cost</label>
-          <div class="field-input">
-            <input type="number" id="cost-price" name="cost" placeholder="₱" step="0.01" min="0" value="0"/>
-          </div>
-        </div>
-        <div class="field-group">
-          <label class="field-label" for="selling-price">Selling Price</label>
-          <div class="field-input">
-            <input type="number" id="selling-price" name="selling_price" placeholder="₱" step="0.01" min="0" value="0"/>
-          </div>
-        </div>
-      </div>
 
-      <div class="fields-row" style="align-items:flex-start;">
-        <div class="field-group full-width">
-          <label class="field-label" for="notes">Additional Notes</label>
-          <div class="field-input textarea-wrap">
-            <textarea id="notes" name="notes" placeholder="Enter Here"></textarea>
+        <div class="edit-fields-row" style="margin-top:8px;">
+          <div class="edit-field-group">
+            <div class="edit-label">Stock Quantity</div>
+            <div class="edit-input-field">
+              <input type="number" id="stock-qty" name="stock_quantity" min="1" required/>
+            </div>
+          </div>
+          <div class="edit-field-group">
+            <div class="edit-label">Cost</div>
+            <div class="edit-input-field">
+              <span class="peso-sign">₱</span>
+              <input type="number" id="cost-price" name="cost"  step="0.01" min="1" required/>
+            </div>
+          </div>
+          <div class="edit-field-group">
+            <div class="edit-label">Selling Price</div>
+            <div class="edit-input-field">
+              <span class="peso-sign">₱</span>
+              <input type="number" id="selling-price" name="selling_price"  step="0.01" min="1" required/>
+            </div>
           </div>
         </div>
-      </div>
 
-      <div class="form-footer">
-        <button type="button" class="btn-cancel-modal" onclick="closeAddOverlay()">Cancel</button>
-        <button type="submit" class="btn-complete">Complete</button>
-      </div>
-    </form>
+        <div class="edit-fields-row" style="margin-top:8px; align-items:flex-start;">
+          <div class="edit-field-group" style="flex:1;">
+            <div class="edit-label">Additional Notes</div>
+            <div class="edit-textarea-field">
+              <textarea id="notes" name="notes" placeholder="Enter Here"></textarea>
+            </div>
+          </div>
+        </div>
+
+        <div class="edit-footer" style="margin-top:8px;">
+          <button type="button" class="edit-btn-cancel" onclick="closeAddOverlay()">Cancel</button>
+          <button type="submit" class="edit-btn-update">Complete</button>
+        </div>
+
+      </form>
+    </section>
 
   </div>
 </div>
@@ -1438,7 +1437,7 @@ $activePage = 'manage-products';
             <div class="edit-label">Expiry Date</div>
             <div class="edit-expiry-wrap">
               <div class="edit-date-picker">
-                <i class="bi bi-calendar3"></i>
+            
                 <input type="date" id="edit-expiry-date" name="expiry_date"/>
               </div>
               <div class="edit-none-part">
@@ -1459,21 +1458,21 @@ $activePage = 'manage-products';
           <div class="edit-field-group">
             <div class="edit-label">Stock Quantity</div>
             <div class="edit-input-field">
-              <input type="number" id="edit-stock-qty" name="stock_quantity" placeholder="0" min="0" value="0"/>
+              <input type="number" id="edit-stock-qty" name="stock_quantity"  min="1"/>
             </div>
           </div>
           <div class="edit-field-group">
             <div class="edit-label">Cost</div>
             <div class="edit-input-field">
               <span class="peso-sign">₱</span>
-              <input type="number" id="edit-cost-price" name="cost" placeholder="0" step="0.01" min="0" value="0"/>
+              <input type="number" id="edit-cost-price" name="cost"  step="0.01" min="1"/>
             </div>
           </div>
           <div class="edit-field-group">
             <div class="edit-label">Selling Price</div>
             <div class="edit-input-field">
               <span class="peso-sign">₱</span>
-              <input type="number" id="edit-selling-price" name="selling_price" placeholder="0" step="0.01" min="0" value="0"/>
+              <input type="number" id="edit-selling-price" name="selling_price"  step="0.01" min="1"/>
             </div>
           </div>
         </div>
@@ -1577,6 +1576,40 @@ function previewAddImage(input) {
     reader.readAsDataURL(input.files[0]);
   }
 }
+/* ─────────────────────────────────────────────────────────────
+   Expiry Date required: must have a date OR "None" checked
+───────────────────────────────────────────────────────────── */
+function validateExpiryRequired(formId, dateInputId, checkboxId) {
+  var form     = document.getElementById(formId);
+  if (!form) return;
+
+  form.addEventListener('submit', function(e) {
+    var dateInput = document.getElementById(dateInputId);
+    var checkbox  = document.getElementById(checkboxId);
+
+    var hasDate    = dateInput && dateInput.value.trim() !== '';
+    var noneChecked = checkbox && checkbox.checked;
+
+    if (!hasDate && !noneChecked) {
+      e.preventDefault();
+      dateInput.setCustomValidity('Please enter an expiry date or check "None".');
+      dateInput.reportValidity();
+    } else {
+      if (dateInput) dateInput.setCustomValidity('');
+    }
+  });
+
+  // Clear error once user picks a date
+  var dateInput = document.getElementById(dateInputId);
+  if (dateInput) {
+    dateInput.addEventListener('change', function() {
+      this.setCustomValidity('');
+    });
+  }
+}
+
+validateExpiryRequired('add-product-form',  'expiry-date',      'no-expiry');
+validateExpiryRequired('edit-product-form', 'edit-expiry-date', 'edit-no-expiry');
 
 /* ─────────────────────────────────────────────────────────────
    EDIT PRODUCT OVERLAY
