@@ -123,17 +123,23 @@ try {
 
 // ── Helper: map reference_type to display label ───────────
 function transactionLabel(string $ref_type, string $movement, string $reason = ''): string {
-    if ($ref_type === 'restock')           return 'Product Restock';
-    if ($ref_type === 'sale')              return 'Sold';
-    if ($ref_type === 'expired_deletion')  return 'Expired & Deleted';
-    if ($ref_type === 'product_addition')  return 'Product Addition';
-    if ($ref_type === 'product_edit')      return 'Product Edit';
-    if ($ref_type === 'manual') {
-        if ($reason === 'Other')                  return 'Product Deletion';
-        if ($reason === 'Stock Count Correction') return 'Product Edit';
-        return 'Adjustment';
-    }
-    return ucfirst($ref_type);
+    return match($ref_type) {
+        'restock'           => 'Product Restock',
+        'sale'              => 'Sold',
+        'expired_deletion'  => 'Deleted Expired Items',
+        'product_addition'  => 'Product Addition',
+        'product_edit'      => 'Product Edit',
+        'manual'            => match($reason) {
+            'Other'                  => 'Product Deletion',
+            'Expired Items'          => 'Deleted Expired Items',
+            'Stock Count Correction' => 'Stock Correction',
+            'Damaged Goods'          => 'Damaged Goods',
+            'Theft/Loss'             => 'Theft / Loss',
+            'Returned to Supplier'   => 'Returned to Supplier',
+            default                  => 'Manual Adjustment',
+        },
+        default => ucfirst($ref_type),
+    };
 }
 
 // ── Helper: generate sequential display ID ────────────────
