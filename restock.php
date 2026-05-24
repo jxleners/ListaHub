@@ -1083,8 +1083,8 @@ $activePage = 'restock';
                     <!-- Add Qty Stepper — default 0, only submitted rows (>0) get restocked -->
                     <td class="td-qty">
                       <div class="qty-stepper">
-                        <button type="button" onclick="changeQty('<?= $rowQtyId ?>', 1)" title="Increase">
-                          <i class="bi bi-plus-circle" style="font-size:16px;"></i>
+                        <button type="button" onclick="changeQty('<?= $rowQtyId ?>', -1)" title="Decrease">
+                          <i class="bi bi-dash-circle" style="font-size:16px;"></i>
                         </button>
                         <input
                           class="qty-input"
@@ -1094,8 +1094,8 @@ $activePage = 'restock';
                           min="0"
                           value="0"
                         />
-                        <button type="button" onclick="changeQty('<?= $rowQtyId ?>', -1)" title="Decrease">
-                          <i class="bi bi-dash-circle" style="font-size:16px;"></i>
+                        <button type="button" onclick="changeQty('<?= $rowQtyId ?>', 1)" title="Increase">
+                          <i class="bi bi-plus-circle" style="font-size:16px;"></i>
                         </button>
                       </div>
                     </td>

@@ -60,12 +60,12 @@ $activePage = 'pos';
   border-radius: 12px;
   padding: 32px 28px 24px;
   min-width: 300px; max-width: 420px;
-  text-align: center;
+  text-align: left;
   box-shadow: 0 8px 32px rgba(0,0,0,0.18);
   font-family: inherit;
 }
-#pos-modal-icon  { font-size: 2.4rem; margin-bottom: 8px; }
-#pos-modal-title { font-size: 1.15rem; font-weight: 700; margin-bottom: 8px; color: #1a1a2e; }
+#pos-modal-icon  { font-size: 2.4rem; margin-bottom: 8px; text-align: center;}
+#pos-modal-title { font-size: 1.15rem; font-weight: 700; margin-bottom: 8px; color: #1a1a2e; text-align: center;}
 #pos-modal-body  { font-size: 0.95rem; color: #444; line-height: 1.6; margin-bottom: 20px; white-space: pre-line; }
 #pos-modal-btn {
   background: #4f46e5; color: #fff;
@@ -147,9 +147,9 @@ $activePage = 'pos';
                       <span class="col-stock col-stock-val"><?= number_format((int)$p['current_stock']) ?></span>
                       <div class="col-qty">
                         <div class="qty-control">
-                          <button class="qty-btn qty-add"   type="button"><i class="bi bi-plus-circle"></i></button>
-                          <span   class="qty-val">0</span>
                           <button class="qty-btn qty-minus" type="button"><i class="bi bi-dash-circle"></i></button>
+                          <span   class="qty-val">0</span>
+                          <button class="qty-btn qty-add" type="button"><i class="bi bi-plus-circle"></i></button>
                         </div>
                       </div>
                       <span class="col-price col-price-val">₱ <?= number_format((float)$p['retail_price'], 2) ?></span>
@@ -520,7 +520,7 @@ if (items === 0) {
       'PAYMENT:  ' + payLabel,
       'TENDERED: ₱' + tendered.toFixed(2),
       'CHANGE:   ₱' + change.toFixed(2),
-      '', 'Proceed with checkout?'
+      
     ].join('\n');
     showPosModal('info', 'Confirm Checkout', msg, function() {
     submitCashSale(total, tendered, change);

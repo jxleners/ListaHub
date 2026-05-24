@@ -1403,7 +1403,7 @@ $activePage = 'manage-products';
           <div class="edit-field-group">
             <div class="edit-label">Stock Quantity</div>
             <div class="edit-input-field">
-              <input type="number" id="stock-qty" name="stock_quantity" min="1" required/>
+              <input type="number" id="stock-qty" name="stock_quantity" min="0" required/>
             </div>
           </div>
           <div class="edit-field-group">
@@ -1551,7 +1551,7 @@ $activePage = 'manage-products';
           <div class="edit-field-group">
             <div class="edit-label">Stock Quantity</div>
             <div class="edit-input-field">
-              <input type="number" id="edit-stock-qty" name="stock_quantity"  min="1"/>
+              <input type="number" id="edit-stock-qty" name="stock_quantity"  min="0"/>
             </div>
           </div>
           <div class="edit-field-group">

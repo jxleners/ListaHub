@@ -205,7 +205,7 @@ body {
   width: 160px;
   min-width: 160px;
   flex-shrink: 0;
-  text-align: left;
+  text-align: center;
 }
 
 .cell-date {
@@ -260,7 +260,7 @@ body {
 .col-item,
 .cell-item {
   flex: 1;
-  min-width: 140px;
+  min-width: 120px;
   text-align: center;
   overflow: hidden;
   text-overflow: ellipsis;

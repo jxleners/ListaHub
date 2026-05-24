@@ -111,7 +111,7 @@ CREATE TABLE Product (
     cost_price          DECIMAL(10,2)     NOT NULL DEFAULT 0.00,
     retail_price        DECIMAL(10,2)     NOT NULL DEFAULT 0.00,
     quantity            INT               NOT NULL DEFAULT 0,
-    low_stock_threshold SMALLINT UNSIGNED NOT NULL DEFAULT 9,
+    low_stock_threshold SMALLINT UNSIGNED NOT NULL DEFAULT 15,
     status              ENUM(
                             'In Stock',
                             'Low Stock',
