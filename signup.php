@@ -205,8 +205,9 @@ if (isset($_SESSION['user_id'])) {
 
           <!-- ── Bottom: terms, submit, login link ── -->
           <div class="section">
+          
             <p class="terms-text">
-              I agree to ListaHub's <b>Terms of Service &amp; Privacy Policy.</b>
+            <input type="checkbox" name="terms" required style="margin-right:5px;accent-color:#ebd665;"/> I agree to ListaHub's <b>Terms of Service &amp; Privacy Policy.</b>
             </p>
 
             <!-- Submit → signup_process.php → on success → dashboard.php -->

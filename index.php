@@ -115,7 +115,6 @@ if (isset($_SESSION['user_id'])) {
             <div class="section">
               <div class="text">
                 <label>
-                  <input type="checkbox" name="terms" required style="margin-right:5px;accent-color:#ebd665;"/>
                   <span class="i-agree-to">I agree to ListaHub's </span>
                   <b class="i-agree-to"><a href="#" style="color:inherit;text-decoration:none;">Terms of Service &amp; Privacy Policy.</a></b>
                 </label>

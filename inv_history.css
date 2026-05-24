@@ -202,8 +202,8 @@ body {
 /* Date — fixed */
 .col-date,
 .cell-date {
-  width: 130px;
-  min-width: 130px;
+  width: 160px;
+  min-width: 160px;
   flex-shrink: 0;
   text-align: left;
 }
@@ -215,15 +215,14 @@ body {
 }
 
 .cell-date i {
-  font-style: italic;
   white-space: nowrap;
 }
 
 /* ID */
 .col-id,
 .cell-id {
-  width: 110px;
-  min-width: 110px;
+  width: 130px;
+  min-width: 130px;
   flex-shrink: 0;
   text-align: center;
 }
@@ -235,7 +234,6 @@ body {
 }
 
 .cell-id i {
-  font-style: italic;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -244,8 +242,8 @@ body {
 /* Transaction Type */
 .col-type,
 .cell-type {
-  width: 145px;
-  min-width: 145px;
+  width: 190px;
+  min-width: 190px;
   flex-shrink: 0;
   text-align: center;
 }
@@ -271,7 +269,6 @@ body {
 
 .cell-item {
   font-size: var(--fs-14);
-  font-style: italic;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -288,7 +285,6 @@ body {
 
 .cell-price {
   font-size: var(--fs-14);
-  font-style: italic;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -297,15 +293,14 @@ body {
 /* Stock Before */
 .col-stock-before,
 .cell-stock-before {
-  width: 95px;
-  min-width: 95px;
+  width: 130px;
+  min-width: 130px;
   flex-shrink: 0;
   text-align: center;
 }
 
 .cell-stock-before {
   font-size: var(--fs-14);
-  font-style: italic;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -323,7 +318,6 @@ body {
 .cell-stock-after {
   font-weight: 600;
   font-size: var(--fs-14);
-  font-style: italic;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -341,7 +335,6 @@ body {
 .cell-total {
   font-weight: 600;
   font-size: var(--fs-14);
-  font-style: italic;
   color: var(--text-brown);
   display: flex;
   align-items: center;
@@ -438,7 +431,6 @@ body {
   text-align: center;
   color: rgba(62, 44, 35, 0.45);
   font-size: var(--fs-14);
-  font-style: italic;
   font-family: var(--font-inter);
 }
 
