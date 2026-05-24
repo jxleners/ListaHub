@@ -322,7 +322,7 @@ $activePage = 'customers';
       ),
       linear-gradient(rgba(252, 248, 238, 0.2), rgba(252, 248, 238, 0.2)) !important;
     border-radius: 15px !important;
-    border: 2px solid var(--text-brown) !important;
+    border: 2px solid #2b2b2bc7 !important;
     box-shadow: 36px 30px 13px transparent,
                 23px 19px 12px rgba(62, 44, 35, 0.01),
                 13px 11px 10px rgba(62, 44, 35, 0.05),
@@ -889,13 +889,45 @@ $activePage = 'customers';
      ============================================================ -->
 <script>
   /* ── Modal helpers ── */
-  function openModal(id)  { document.getElementById(id).classList.add('active'); }
-  function closeModal(id) { document.getElementById(id).classList.remove('active'); }
+  function setBodyLocked(locked) {
+    document.body.style.overflow = locked ? 'hidden' : '';
+  }
+
+  function openModal(id) {
+    var overlay = document.getElementById(id);
+    if (!overlay) return;
+    overlay.classList.add('active');
+    setBodyLocked(true);
+  }
+
+  function closeModal(id) {
+    var overlay = document.getElementById(id);
+    if (!overlay) return;
+    overlay.classList.remove('active');
+    if (!document.querySelector('.modal-overlay.active')) {
+      setBodyLocked(false);
+    }
+  }
 
   document.querySelectorAll('.modal-overlay').forEach(function(overlay) {
     overlay.addEventListener('click', function(e) {
-      if (e.target === overlay) overlay.classList.remove('active');
+      if (e.target === overlay) {
+        overlay.classList.remove('active');
+        if (!document.querySelector('.modal-overlay.active')) {
+          setBodyLocked(false);
+        }
+      }
     });
+  });
+
+  document.addEventListener('keydown', function(e) {
+    if (e.key !== 'Escape') return;
+    var activeOverlay = document.querySelector('.modal-overlay.active');
+    if (!activeOverlay) return;
+    activeOverlay.classList.remove('active');
+    if (!document.querySelector('.modal-overlay.active')) {
+      setBodyLocked(false);
+    }
   });
 
   var _currentBalance = 0;

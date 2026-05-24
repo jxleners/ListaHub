@@ -15,7 +15,7 @@
   box-sizing: border-box;
 
   /* ↓ INSERT your background image path here */
-  background-image: url(pics_icons/signup-page@3x.png);
+  background-image: url(pics_icons/auth-bg.png);
   background-size: cover;
   background-repeat: no-repeat;
   background-position: top center;
@@ -54,10 +54,10 @@
   overflow: hidden;
   flex-shrink: 0;
   box-sizing: border-box;
-  backdrop-filter: blur(51.3px);
-  -webkit-backdrop-filter: blur(51.3px);
-  background-color: var(--color-gray-500);
-  border-bottom: 2px solid var(--color-gray-400);
+  background: rgba(255, 248, 235, 0.15);
+  border-bottom: 2px solid #2b2b2bc7;
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
   justify-content: space-between;
   padding: var(--padding-10_1) 100px var(--padding-8);
   gap: var(--gap-20);
@@ -198,7 +198,7 @@
 ══════════════════════════════════════════ */
 .sign-up-card {
   width: 563px;
-  box-shadow: 0 11.4px 22.3px rgba(53, 106, 185, 0.09);
+  box-shadow: 0 11.4px 22.3px rgba(5, 18, 50, 0.2);
   border-radius: 15px;
   display: flex;
   align-items: center;
@@ -207,10 +207,10 @@
   box-sizing: border-box;
   flex-shrink: 0;
   max-width: 100%;
-  background: rgba(255, 248, 235, 0.42);
-  border: 1px solid rgba(255, 255, 255, 0.55);
-  backdrop-filter: blur(18px);
-  -webkit-backdrop-filter: blur(18px);
+  background: rgba(255, 248, 235, 0.15);
+  border: 2px solid #2b2b2bc7;
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
 }
 
 /* Form inner wrapper */

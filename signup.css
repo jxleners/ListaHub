@@ -16,7 +16,7 @@
   display: flex;
   align-items: flex-start;
 
-  background-image: url(/ListaHub/pics_icons/signup-page@3x.png); /* ← INSERT signup-page@3x.png path */
+  background-image: url(/ListaHub/pics_icons/auth-bg.png);
   background-size: cover;
   background-repeat: no-repeat;
   background-position: top left;
@@ -39,10 +39,10 @@
 .nav {
   align-self: stretch;
   height: 68.4px;
-  backdrop-filter: blur(51.3px);
-  -webkit-backdrop-filter: blur(51.3px);
-  background-color: var(--color-gray-500);
-  border-bottom: 2px solid var(--color-gray-400);
+  background: rgba(255, 248, 235, 0.15);
+  border-bottom: 2px solid #2b2b2bc7;
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -93,7 +93,9 @@
   padding: var(--padding-10_1) var(--padding-16_1);
   transition: opacity 0.2s;
 }
-.nav-login:hover { opacity: 0.75; }
+.nav-login:hover {
+  opacity: 0.75;
+}
 
 .nav-signup-btn {
   cursor: pointer;
@@ -102,10 +104,10 @@
   background-color: var(--color-burlywood);
   box-shadow:
     -15.1px -13.1px 6px transparent inset,
-    -10.1px -8.1px  5px rgba(44, 44, 44, 0.01) inset,
-    -5px    -5px    4px rgba(44, 44, 44, 0.03) inset,
-    -2px    -2px    3px rgba(44, 44, 44, 0.04) inset,
-    -1px    -1px    2px rgba(44, 44, 44, 0.05) inset;
+    -10.1px -8.1px 5px rgba(44, 44, 44, 0.01) inset,
+    -5px -5px 4px rgba(44, 44, 44, 0.03) inset,
+    -2px -2px 3px rgba(44, 44, 44, 0.04) inset,
+    -1px -1px 2px rgba(44, 44, 44, 0.05) inset;
   border-radius: 10.1px;
   display: flex;
   align-items: center;
@@ -117,7 +119,9 @@
   text-decoration: none;
   transition: filter 0.2s;
 }
-.nav-signup-btn:hover { filter: brightness(0.95); }
+.nav-signup-btn:hover {
+  filter: brightness(0.95);
+}
 
 /* ── Main content row ───────────────────────────────────── */
 .content-area {
@@ -171,7 +175,7 @@
    ──────────────────────────────────────────────────────────── */
 .sign-up-card {
   width: 453.7px;
-  box-shadow: 0 9.2px 18px rgba(53, 106, 185, 0.09);
+  box-shadow: 0 11.4px 22.3px rgba(52, 53, 54, 0.2);
   border-radius: 12.1px;
   overflow: hidden;
   flex-shrink: 0;
@@ -179,8 +183,10 @@
   align-items: center;
   justify-content: center;
   padding: 10px 76px 16px;
-
-  background-image: url(/ListaHub/pics_icons/sign-up-card@3x.png); /* ← INSERT sign-up-card@3x.png path */
+  background: rgba(255, 248, 235, 0.15);
+  border: 2px solid #2b2b2bc7;
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
   background-size: cover;
   background-repeat: no-repeat;
   background-position: top;
@@ -238,9 +244,12 @@
   overflow: hidden;
   display: flex;
   align-items: center;
-  padding: var(--padding-8_1) var(--padding-9_7) var(--padding-8_1) var(--padding-16_1);
+  padding: var(--padding-8_1) var(--padding-9_7) var(--padding-8_1)
+    var(--padding-16_1);
   gap: var(--gap-12_1);
-  transition: background-color 0.2s, border-color 0.2s;
+  transition:
+    background-color 0.2s,
+    border-color 0.2s;
 }
 .input-field:focus-within {
   background-color: rgba(253, 243, 219, 0.55);
@@ -248,9 +257,21 @@
 }
 
 /* Field icon sizes — these match the original Figma spec */
-.field-icon-user  { width: 14.5px; height: 14.5px; flex-shrink: 0; } /* Field-Icons.svg  */
-.field-icon-lock  { width: 12.9px; height: 16.9px; flex-shrink: 0; } /* Vector.svg / Vector1.svg */
-.field-icon-store { width: 14.5px; height: 12.9px; flex-shrink: 0; } /* Vector2.svg      */
+.field-icon-user {
+  width: 14.5px;
+  height: 14.5px;
+  flex-shrink: 0;
+} /* Field-Icons.svg  */
+.field-icon-lock {
+  width: 12.9px;
+  height: 16.9px;
+  flex-shrink: 0;
+} /* Vector.svg / Vector1.svg */
+.field-icon-store {
+  width: 14.5px;
+  height: 12.9px;
+  flex-shrink: 0;
+} /* Vector2.svg      */
 
 .input-field input {
   width: 100%;
@@ -284,7 +305,9 @@
   color: var(--color-black);
   text-align: center;
 }
-.terms-text b { font-weight: 700; }
+.terms-text b {
+  font-weight: 700;
+}
 
 .signup-btn {
   cursor: pointer;
@@ -292,11 +315,11 @@
   padding: var(--padding-8_1) var(--padding-16_1);
   background-color: var(--yellow);
   box-shadow:
-    -21px   -13.7px 7.3px transparent inset,
-    -13.7px -8.9px  6.4px rgba(44, 44, 44, 0.01) inset,
-    -7.3px  -4.8px  5.6px rgba(44, 44, 44, 0.05) inset,
-    -3.2px  -2.4px  4px   rgba(44, 44, 44, 0.09) inset,
-    -0.8px  -0.8px  2.4px rgba(44, 44, 44, 0.10) inset;
+    -21px -13.7px 7.3px transparent inset,
+    -13.7px -8.9px 6.4px rgba(44, 44, 44, 0.01) inset,
+    -7.3px -4.8px 5.6px rgba(44, 44, 44, 0.05) inset,
+    -3.2px -2.4px 4px rgba(44, 44, 44, 0.09) inset,
+    -0.8px -0.8px 2.4px rgba(44, 44, 44, 0.1) inset;
   border-radius: 186.1px;
   display: flex;
   align-items: center;
@@ -307,10 +330,17 @@
   font-family: var(--font-inter);
   color: var(--text-brown);
   min-width: 120px;
-  transition: filter 0.2s, transform 0.1s;
+  transition:
+    filter 0.2s,
+    transform 0.1s;
 }
-.signup-btn:hover  { filter: brightness(0.95); transform: translateY(-1px); }
-.signup-btn:active { transform: translateY(0); }
+.signup-btn:hover {
+  filter: brightness(0.95);
+  transform: translateY(-1px);
+}
+.signup-btn:active {
+  transform: translateY(0);
+}
 
 .login-link-text {
   width: 300.6px;
@@ -325,7 +355,9 @@
   color: var(--color-black);
   text-decoration: none;
 }
-.login-link-text a:hover { text-decoration: underline; }
+.login-link-text a:hover {
+  text-decoration: underline;
+}
 
 /* ── Responsive ─────────────────────────────────────────── */
 @media screen and (max-width: 1200px) {
@@ -337,21 +369,52 @@
 }
 
 @media screen and (max-width: 1050px) {
-  .listahub-title { font-size: 50px; line-height: 56px; }
-  .content-area   { flex-direction: column; padding: 40px; gap: 40px; }
-  .sign-up-card   { width: 100%; max-width: 453.7px; }
-  .listahub-desc  { width: 100%; }
+  .listahub-title {
+    font-size: 50px;
+    line-height: 56px;
+  }
+  .content-area {
+    flex-direction: column;
+    padding: 40px;
+    gap: 40px;
+  }
+  .sign-up-card {
+    width: 100%;
+    max-width: 453.7px;
+  }
+  .listahub-desc {
+    width: 100%;
+  }
 }
 
 @media screen and (max-width: 750px) {
-  .nav          { padding-left: 50px; padding-right: 50px; }
-  .content-area { gap: 32px; padding: 32px 24px; }
+  .nav {
+    padding-left: 50px;
+    padding-right: 50px;
+  }
+  .content-area {
+    gap: 32px;
+    padding: 32px 24px;
+  }
 }
 
 @media screen and (max-width: 450px) {
-  .nav          { padding-left: var(--padding-20); padding-right: var(--padding-20); }
-  .menu         { gap: var(--gap-20); }
-  .content-area { gap: 21px; }
-  .listahub-title { font-size: 37px; line-height: 42px; }
-  .sign-up-card { padding-left: 38px; padding-right: 38px; }
+  .nav {
+    padding-left: var(--padding-20);
+    padding-right: var(--padding-20);
+  }
+  .menu {
+    gap: var(--gap-20);
+  }
+  .content-area {
+    gap: 21px;
+  }
+  .listahub-title {
+    font-size: 37px;
+    line-height: 42px;
+  }
+  .sign-up-card {
+    padding-left: 38px;
+    padding-right: 38px;
+  }
 }

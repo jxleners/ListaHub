@@ -7,7 +7,7 @@
 body {
   /* TODO: Replace with your background image, same as dashboard.php:
      background-image: url('pics_icons/bg2_blank.png'); */
-  background-image: url('pics_icons/bg2_blank.png');
+  background-image: url("pics_icons/bg2_blank.png");
   background-size: cover;
   background-repeat: no-repeat;
   background-position: top center;
@@ -105,9 +105,15 @@ body {
   box-sizing: border-box;
 }
 
-.summary-card.card-unsettled { background-color: var(--light-red); }
-.summary-card.card-credit    { background-color: var(--color-linen); }
-.summary-card.card-total     { background-color: var(--yellow-white-1); }
+.summary-card.card-unsettled {
+  background-color: var(--light-red);
+}
+.summary-card.card-credit {
+  background-color: var(--color-linen);
+}
+.summary-card.card-total {
+  background-color: var(--yellow-white-1);
+}
 
 .card-inner {
   display: flex;
@@ -135,9 +141,18 @@ body {
    and add: .card-icon { height:70px; width:70px; object-fit:cover; flex-shrink:0; }
 */
 
-.card-icon-placeholder.icon-red    { background-color: var(--red);            color: #fff; }
-.card-icon-placeholder.icon-orange { background-color: var(--Accents-Orange); color: #fff; }
-.card-icon-placeholder.icon-gray   { background-color: rgba(62,44,35,0.15);   color: var(--1-brown); }
+.card-icon-placeholder.icon-red {
+  background-color: var(--red);
+  color: #fff;
+}
+.card-icon-placeholder.icon-orange {
+  background-color: var(--Accents-Orange);
+  color: #fff;
+}
+.card-icon-placeholder.icon-gray {
+  background-color: rgba(62, 44, 35, 0.15);
+  color: var(--1-brown);
+}
 
 .card-texts {
   display: flex;
@@ -162,11 +177,17 @@ body {
   font-family: var(--font-inter);
 }
 
-.card-value.val-red    { color: var(--red); }
-.card-value.val-orange { color: var(--Accents-Orange); }
+.card-value.val-red {
+  color: var(--red);
+}
+.card-value.val-orange {
+  color: var(--Accents-Orange);
+}
 /* Use a literal colour here — NOT --color-gray-300 which sidebar.css
    has overridden to rgba(0,0,0,0.01). */
-.card-value.val-gray   { color: rgba(62, 44, 35, 0.85); }
+.card-value.val-gray {
+  color: rgba(62, 44, 35, 0.85);
+}
 
 /* ============================================================
    TABLE CONTAINER
@@ -304,7 +325,9 @@ body {
   color: var(--1-brown);
   flex-shrink: 0;
   text-decoration: none;
-  transition: background 0.18s, border-color 0.18s;
+  transition:
+    background 0.18s,
+    border-color 0.18s;
   box-sizing: border-box;
 }
 
@@ -312,7 +335,6 @@ body {
   background-color: rgba(112, 94, 87, 0.09);
   border-color: #705e57;
 }
-
 
 /* ── Table View ── */
 .table-view-wrapper {
@@ -348,16 +370,24 @@ table.customers-table thead th {
   border-bottom: 2px solid var(--1-brown);
 }
 
-table.customers-table thead th.col-status  { text-align: center; }
-table.customers-table thead th.col-actions { text-align: center; }
+table.customers-table thead th.col-status {
+  text-align: center;
+}
+table.customers-table thead th.col-actions {
+  text-align: center;
+}
 
 table.customers-table tbody tr {
   border-bottom: 1px solid rgba(62, 44, 35, 0.2);
   transition: background 0.15s;
 }
 
-table.customers-table tbody tr:last-child { border-bottom: none; }
-table.customers-table tbody tr:hover { background-color: rgba(235, 214, 101, 0.12); }
+table.customers-table tbody tr:last-child {
+  border-bottom: none;
+}
+table.customers-table tbody tr:hover {
+  background-color: rgba(235, 214, 101, 0.12);
+}
 
 table.customers-table tbody td {
   padding: 12px 16px;
@@ -370,25 +400,25 @@ table.customers-table tbody td {
 
 table.customers-table tbody td.col-name {
   font-weight: 600;
- 
 }
 
 .date-cell {
-
   align-items: center;
   gap: 6px;
- text-align: center; 
+  text-align: center;
 }
 
 .date-cell i {
   font-size: 14px;
   color: var(--1-brown);
   opacity: 0.7;
-  text-align: center; 
+  text-align: center;
 }
 
 /* Status badges */
-table.customers-table tbody td.col-status { text-align: center; }
+table.customers-table tbody td.col-status {
+  text-align: center;
+}
 
 .status-badge {
   display: inline-flex;
@@ -429,7 +459,9 @@ table.customers-table tbody td.col-status { text-align: center; }
 }
 
 /* Actions column */
-table.customers-table tbody td.col-actions { text-align: center; }
+table.customers-table tbody td.col-actions {
+  text-align: center;
+}
 
 .actions-cell {
   display: flex;
@@ -454,12 +486,17 @@ table.customers-table tbody td.col-actions { text-align: center; }
   cursor: pointer;
   color: var(--1-brown);
   font-size: 15px;
-  transition: background 0.15s, border-color 0.15s, color 0.15s;
+  transition:
+    background 0.15s,
+    border-color 0.15s,
+    color 0.15s;
   text-decoration: none;
   box-sizing: border-box;
 }
 
-.action-icon-btn:hover         { background: rgba(62, 44, 35, 0.08); }
+.action-icon-btn:hover {
+  background: rgba(62, 44, 35, 0.08);
+}
 .action-icon-btn.btn-delete:hover {
   background: rgba(235, 69, 58, 0.1);
   border-color: var(--red);
@@ -485,7 +522,7 @@ table.customers-table tbody td.col-actions { text-align: center; }
   box-sizing: border-box;
 }
 
-.page-btn{
+.page-btn {
   display: flex;
   align-items: center;
   gap: 6px;
@@ -500,31 +537,51 @@ table.customers-table tbody td.col-actions { text-align: center; }
   color: var(--1-brown);
   transition: background 0.15s;
 }
-.page-btn:hover    { background: rgba(207, 204, 201, 0.3); }
-.page-btn:disabled { opacity: 0.38; cursor: not-allowed; }
-.page-btn i        { font-size: 14px; }
+.page-btn:hover {
+  background: rgba(207, 204, 201, 0.3);
+}
+.page-btn:disabled {
+  opacity: 0.38;
+  cursor: not-allowed;
+}
+.page-btn i {
+  font-size: 14px;
+}
 
 /* ============================================================
    MODALS
    ============================================================ */
 .modal-overlay {
-  display: none;
+  display: flex;
   position: fixed;
   inset: 0;
-  background-color: rgba(30, 25, 20, 0.68);
-  backdrop-filter: blur(41px);
-  -webkit-backdrop-filter: blur(41px);
+  background: rgba(255, 248, 235, 0.15);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
   z-index: 1000;
   align-items: center;
   justify-content: center;
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transition:
+    opacity 220ms ease,
+    visibility 0s linear 220ms;
 }
 
-.modal-overlay.active { display: flex; }
+.modal-overlay.active {
+  opacity: 1;
+  visibility: visible;
+  pointer-events: auto;
+  transition:
+    opacity 220ms ease,
+    visibility 0s linear 0s;
+}
 
 .modal-box {
-  background: #fcf8ee; /* literal — avoids --color-gray-100 conflict */
+  background: #fcf8ee;
   border-radius: var(--br-15);
-  border: var(--border-1);
+  border: 2px solid #2b2b2bc7;
   box-shadow: var(--shadow-drop);
   padding: 20px;
   width: 100%;
@@ -533,6 +590,16 @@ table.customers-table tbody td.col-actions { text-align: center; }
   display: flex;
   flex-direction: column;
   gap: 15px;
+  opacity: 0;
+  transform: translateY(12px) scale(0.98);
+  transition:
+    opacity 220ms cubic-bezier(0.22, 0.61, 0.36, 1),
+    transform 220ms cubic-bezier(0.22, 0.61, 0.36, 1);
+}
+
+.modal-overlay.active .modal-box {
+  opacity: 1;
+  transform: translateY(0) scale(1);
 }
 
 .modal-title {
@@ -571,7 +638,9 @@ table.customers-table tbody td.col-actions { text-align: center; }
 }
 
 .modal-input:focus,
-.modal-select:focus { border-color: var(--yellow); }
+.modal-select:focus {
+  border-color: var(--yellow);
+}
 
 .modal-footer {
   display: flex;
@@ -592,12 +661,29 @@ table.customers-table tbody td.col-actions { text-align: center; }
   box-sizing: border-box;
 }
 
-.modal-btn.btn-cancel            { background: transparent; color: var(--1-brown); }
-.modal-btn.btn-cancel:hover      { background: rgba(62, 44, 35, 0.08); }
-.modal-btn.btn-primary           { background: var(--yellow); color: var(--1-brown); border-color: var(--yellow); }
-.modal-btn.btn-primary:hover     { background: #d9c355; }
-.modal-btn.btn-danger            { background: var(--red); color: #fff; border-color: var(--red); }
-.modal-btn.btn-danger:hover      { background: #c73930; }
+.modal-btn.btn-cancel {
+  background: transparent;
+  color: var(--1-brown);
+}
+.modal-btn.btn-cancel:hover {
+  background: rgba(62, 44, 35, 0.08);
+}
+.modal-btn.btn-primary {
+  background: var(--yellow);
+  color: var(--1-brown);
+  border-color: var(--yellow);
+}
+.modal-btn.btn-primary:hover {
+  background: #d9c355;
+}
+.modal-btn.btn-danger {
+  background: var(--red);
+  color: #fff;
+  border-color: var(--red);
+}
+.modal-btn.btn-danger:hover {
+  background: #c73930;
+}
 
 /* Flash messages */
 .flash-msg {
@@ -609,24 +695,47 @@ table.customers-table tbody td.col-actions { text-align: center; }
   box-sizing: border-box;
 }
 
-.flash-msg.success { background: rgba(21, 148, 89, 0.15); color: var(--green); border: 1px solid var(--green); }
-.flash-msg.error   { background: rgba(235, 69, 58, 0.12); color: var(--red);   border: 1px solid var(--red); }
+.flash-msg.success {
+  background: rgba(21, 148, 89, 0.15);
+  color: var(--green);
+  border: 1px solid var(--green);
+}
+.flash-msg.error {
+  background: rgba(235, 69, 58, 0.12);
+  color: var(--red);
+  border: 1px solid var(--red);
+}
 
 /* ============================================================
    RESPONSIVE
    ============================================================ */
 @media screen and (max-width: 1050px) {
-  .sidebar   { display: none; }
-  .cards-row { flex-wrap: wrap; }
+  .sidebar {
+    display: none;
+  }
+  .cards-row {
+    flex-wrap: wrap;
+  }
 }
 
 @media screen and (max-width: 900px) {
-  .page-title        { font-size: 22px; }
-  .actions-top-row   { flex-wrap: wrap; height: auto; }
-  .table-view-wrapper{ overflow-x: auto; }
+  .page-title {
+    font-size: 22px;
+  }
+  .actions-top-row {
+    flex-wrap: wrap;
+    height: auto;
+  }
+  .table-view-wrapper {
+    overflow-x: auto;
+  }
 }
 
 @media screen and (max-width: 600px) {
-  .modal-box { max-width: 95vw; }
-  .cards-row { flex-direction: column; }
+  .modal-box {
+    max-width: 95vw;
+  }
+  .cards-row {
+    flex-direction: column;
+  }
 }

@@ -487,21 +487,28 @@ $activePage = 'restock';
      EDIT OVERLAY BACKDROP
   ═══════════════════════════════════════════════════════ */
   #edit-product-overlay {
-    display: none;
+    display: flex;
     position: fixed;
     inset: 0;
     z-index: 1200;
-    background: linear-gradient(180deg, rgba(235,233,225,0.55), rgba(169,174,181,0.55));
-    backdrop-filter: blur(51px);
-    -webkit-backdrop-filter: blur(51px);
-    box-shadow: 0 11.4px 22.3px rgba(53,106,185,0.09) inset,
-                0 -2px 1px rgba(151,193,255,0.4) inset;
+    background: rgba(255, 248, 235, 0.15);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
     align-items: center;
     justify-content: center;
     padding: 20px;
     overflow-y: auto;
+    opacity: 0;
+    visibility: hidden;
+    pointer-events: none;
+    transition: opacity 220ms ease, visibility 0s linear 220ms;
   }
-  #edit-product-overlay.is-open { display: flex; }
+  #edit-product-overlay.is-open {
+    opacity: 1;
+    visibility: visible;
+    pointer-events: auto;
+    transition: opacity 220ms ease, visibility 0s linear 0s;
+  }
 
   /* ═══════════════════════════════════════════════════════
      EDIT OVERLAY — modal card  (matches the design image)
@@ -529,11 +536,14 @@ $activePage = 'restock';
     border: 2px solid var(--text-brown);
     overflow: hidden;
     padding: 17px 15px;
-    animation: editModalIn 0.2s ease;
+    opacity: 0;
+    transform: translateY(10px) scale(0.98);
+    transition: opacity 220ms cubic-bezier(.22, .61, .36, 1),
+                transform 220ms cubic-bezier(.22, .61, .36, 1);
   }
-  @keyframes editModalIn {
-    from { opacity: 0; transform: translateY(-12px) scale(0.98); }
-    to   { opacity: 1; transform: translateY(0)     scale(1); }
+  #edit-product-overlay.is-open .edit-overlay-card {
+    opacity: 1;
+    transform: translateY(0) scale(1);
   }
 
   /* Header row */
@@ -818,89 +828,124 @@ $activePage = 'restock';
     .eo-title { font-size: 19px; }
     .eo-fields-row { flex-wrap: wrap; }
   }
+  #edit-product-overlay,
+  #del-modal-overlay,
+  #img-preview-overlay {
+    position: fixed;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+    z-index: 1200;
+    opacity: 0;
+    visibility: hidden;
+    pointer-events: none;
+    transition: opacity 220ms ease, visibility 0s linear 220ms;
+  }
+  #edit-product-overlay.is-open,
+  #del-modal-overlay.is-open,
+  #img-preview-overlay.is-open {
+    opacity: 1;
+    visibility: visible;
+    pointer-events: auto;
+    transition: opacity 220ms ease, visibility 0s linear 0s;
+  }
+  #edit-product-overlay {
+    background: rgba(255,248,235,0.15);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+  }
   #del-modal-overlay {
-  position: fixed; inset: 0;
-  background: rgba(0,0,0,0.45);
-  display: flex; align-items: center; justify-content: center;
-  z-index: 9999;
+    background: rgba(48,35,21,0.24);
+    backdrop-filter: blur(14px);
+    -webkit-backdrop-filter: blur(14px);
+  }
+  #img-preview-overlay {
+    background: rgba(0, 0, 0, 0.65);
+    backdrop-filter: blur(6px);
+    -webkit-backdrop-filter: blur(6px);
   }
   #del-modal-box {
     background: #fff;
     border-radius: 12px;
     padding: 32px 28px 24px;
-    min-width: 300px; max-width: 420px;
+    min-width: 300px;
+    max-width: 420px;
     text-align: center;
     box-shadow: 0 8px 32px rgba(0,0,0,0.18);
     font-family: inherit;
+    opacity: 0;
+    transform: translateY(10px) scale(0.98);
+    transition: opacity 220ms cubic-bezier(.22, .61, .36, 1),
+                transform 220ms cubic-bezier(.22, .61, .36, 1);
+  }
+  #del-modal-overlay.is-open #del-modal-box {
+    opacity: 1;
+    transform: translateY(0) scale(1);
   }
   #del-modal-icon  { font-size: 2.4rem; margin-bottom: 8px; }
   #del-modal-title { font-size: 1.15rem; font-weight: 700; margin-bottom: 8px; color: #1a1a2e; }
   #del-modal-body  { font-size: 0.95rem; color: #444; line-height: 1.6; }
-  #img-preview-overlay {
-  position: fixed;
-  inset: 0;
-  background: rgba(0, 0, 0, 0.65);
-  align-items: center;
-  justify-content: center;
-  z-index: 10000;
-}
-#img-preview-box {
-  position: relative;
-  border-radius: 15px;
-  padding: 50px 20px 16px;
-  width: 360px;
-  max-width: 90vw;
-  text-align: center;
-  box-shadow: 0 12px 40px rgba(0,0,0,0.3);
-  background: linear-gradient(
-    146.01deg,
-    rgba(253, 253, 253, 0.98),
-    rgba(254, 246, 227, 0.98) 49.52%,
-    rgba(255, 244, 216, 0.98)
-  );
-  border: 1px solid #3e2c23;
-  animation: popIn 0.18s ease;
-}
-#img-preview-src {
-  width: 320px;
-  height: 320px;
-  max-width: 100%;
-  object-fit: cover;
-  border-radius: 10px;
-  border: 1px solid rgba(62, 44, 35, 0.2);
-  display: block;
-  margin: 0 auto;
-}
-#img-preview-name {
-  margin-top: 10px;
-  font-size: 14px;
-  font-weight: 600;
-  color: #3e2c23;
-  font-family: Inter, sans-serif;
-}
-#img-preview-close {
-  position: absolute;
-  top: 10px;
-  right: 10px;
-  background: rgba(112, 94, 87, 0.09);
-  border: 1px solid rgba(62, 44, 35, 0.2);
-  border-radius: 50%;
-  width: 30px;
-  height: 30px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-  font-size: 14px;
-  color: #3e2c23;
-  transition: background 0.15s;
-}
-#img-preview-close:hover { background: rgba(62, 44, 35, 0.14); }
-
-@keyframes popIn {
-  from { opacity: 0; transform: scale(0.92); }
-  to   { opacity: 1; transform: scale(1); }
-}
+  #img-preview-box {
+    position: relative;
+    border-radius: 15px;
+    padding: 50px 20px 16px;
+    width: 360px;
+    max-width: 90vw;
+    text-align: center;
+    box-shadow: 0 12px 40px rgba(0,0,0,0.3);
+    background: linear-gradient(
+      146.01deg,
+      rgba(253, 253, 253, 0.98),
+      rgba(254, 246, 227, 0.98) 49.52%,
+      rgba(255, 244, 216, 0.98)
+    );
+    border: 1px solid #3e2c23;
+    opacity: 0;
+    transform: translateY(10px) scale(0.98);
+    transition: opacity 220ms cubic-bezier(.22, .61, .36, 1),
+                transform 220ms cubic-bezier(.22, .61, .36, 1);
+  }
+  #img-preview-overlay.is-open #img-preview-box {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+  #img-preview-src {
+    width: 320px;
+    height: 320px;
+    max-width: 100%;
+    object-fit: cover;
+    border-radius: 10px;
+    border: 1px solid rgba(62, 44, 35, 0.2);
+    display: block;
+    margin: 0 auto;
+  }
+  #img-preview-name {
+    margin-top: 10px;
+    font-size: 14px;
+    font-weight: 600;
+    color: #3e2c23;
+    font-family: Inter, sans-serif;
+  }
+  #img-preview-close {
+    position: absolute;
+    top: 10px;
+    right: 10px;
+    background: rgba(112, 94, 87, 0.09);
+    border: 1px solid rgba(62, 44, 35, 0.2);
+    border-radius: 50%;
+    width: 30px;
+    height: 30px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    font-size: 14px;
+    color: #3e2c23;
+    transition: background 0.15s;
+  }
+  #img-preview-close:hover { background: rgba(62, 44, 35, 0.14); }
   </style>
 </head>
 <body>
@@ -1478,45 +1523,63 @@ document.addEventListener('DOMContentLoaded', function () {
   }
 });
 
-/* ── ESC closes edit overlay ─────────────────────────────── */
+/* ── ESC closes any open overlay ─────────────────────────── */
 document.addEventListener('keydown', function(e) {
-  if (e.key === 'Escape' && editOverlay.classList.contains('is-open')) closeEditOverlay();
+  if (e.key !== 'Escape') return;
+  var imgOverlay = document.getElementById('img-preview-overlay');
+  var delOverlay = document.getElementById('del-modal-overlay');
+
+  if (imgOverlay && imgOverlay.classList.contains('is-open')) {
+    closeImgPreview();
+  } else if (delOverlay && delOverlay.classList.contains('is-open')) {
+    cancelDelModal();
+  } else if (editOverlay.classList.contains('is-open')) {
+    closeEditOverlay();
+  }
 });
+
 function deleteProduct(productId) {
-  document.getElementById('del-modal-overlay').style.display = 'flex';
+  var delOverlay = document.getElementById('del-modal-overlay');
+  if (!delOverlay) return;
+  delOverlay.classList.add('is-open');
+  document.body.style.overflow = 'hidden';
   document.getElementById('del-modal-confirm-btn').onclick = function() {
-    document.getElementById('del-modal-overlay').style.display = 'none';
+    delOverlay.classList.remove('is-open');
+    document.body.style.overflow = '';
     document.getElementById('delete-product-id').value = productId;
     document.getElementById('delete-product-form').submit();
   };
 }
 
 function cancelDelModal() {
-  document.getElementById('del-modal-overlay').style.display = 'none';
+  var delOverlay = document.getElementById('del-modal-overlay');
+  if (delOverlay) {
+    delOverlay.classList.remove('is-open');
+  }
+  document.body.style.overflow = '';
 }
 
 function openImgPreview(src, name) {
   var overlay = document.getElementById('img-preview-overlay');
   document.getElementById('img-preview-src').src          = src;
   document.getElementById('img-preview-name').textContent = name;
-  overlay.style.display        = 'flex';
-  overlay.style.position       = 'fixed';
-  overlay.style.inset          = '0';
-  overlay.style.background     = 'rgba(0,0,0,0.65)';
-  overlay.style.alignItems     = 'center';
-  overlay.style.justifyContent = 'center';
-  overlay.style.zIndex         = '10000';
+  if (overlay) {
+    overlay.classList.add('is-open');
+  }
   document.body.style.overflow = 'hidden';
 }
 
 function closeImgPreview() {
-  document.getElementById('img-preview-overlay').style.display = 'none';
+  var overlay = document.getElementById('img-preview-overlay');
+  if (overlay) {
+    overlay.classList.remove('is-open');
+  }
   document.body.style.overflow = '';
 }
 
 </script>
 
-<div id="del-modal-overlay" style="display:none;" onclick="cancelDelModal()">
+<div id="del-modal-overlay" onclick="cancelDelModal()">
   <div id="del-modal-box" onclick="event.stopPropagation()">
     <div id="del-modal-icon">🗑️</div>
     <div id="del-modal-title">Delete Product</div>
@@ -1528,7 +1591,7 @@ function closeImgPreview() {
   </div>
 </div>
 
-<div id="img-preview-overlay" style="display:none;" onclick="closeImgPreview()">
+<div id="img-preview-overlay" onclick="closeImgPreview()">
   <div id="img-preview-box" onclick="event.stopPropagation()">
     <button id="img-preview-close" onclick="closeImgPreview()"><i class="bi bi-x-lg"></i></button>
     <img id="img-preview-src" src="" alt=""/>
