@@ -222,10 +222,9 @@ body {
   display: flex;
   align-items: center;
   gap: 15px;
-  box-shadow: var(--shadow-inner);
+  border-color: 1px solid rgba(62, 44, 35, 0.2);
   border-radius: 40px;
   background-color: var(--yellow-white-1);
-  border: var(--border-1);
   padding: 8px 20px;
   max-width: 247px;
   flex: 1;
@@ -314,28 +313,6 @@ body {
   border-color: #705e57;
 }
 
-/* Add Customer Button */
-.add-customer-btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  height: 37px;
-  border-radius: var(--br-10);
-  border: var(--border-1);
-  padding: 8px 16px;
-  background-color: var(--yellow);
-  cursor: pointer;
-  font-family: var(--font-inter);
-  font-size: 16px;
-  font-weight: 600;
-  letter-spacing: -0.04em;
-  color: var(--1-brown);
-  flex-shrink: 0;
-  transition: background 0.18s;
-  box-sizing: border-box;
-}
-
-.add-customer-btn:hover { background-color: #d9c355; }
 
 /* ── Table View ── */
 .table-view-wrapper {
@@ -367,12 +344,12 @@ table.customers-table thead th {
   font-weight: 700;
   color: var(--1-brown);
   letter-spacing: -0.04em;
-  text-align: left;
+  text-align: center;
   border-bottom: 2px solid var(--1-brown);
 }
 
 table.customers-table thead th.col-status  { text-align: center; }
-table.customers-table thead th.col-actions { text-align: right; }
+table.customers-table thead th.col-actions { text-align: center; }
 
 table.customers-table tbody tr {
   border-bottom: 1px solid rgba(62, 44, 35, 0.2);
@@ -388,22 +365,26 @@ table.customers-table tbody td {
   font-style: italic;
   color: var(--1-brown);
   vertical-align: middle;
+  text-align: center;
 }
 
 table.customers-table tbody td.col-name {
   font-weight: 600;
+ 
 }
 
 .date-cell {
-  display: flex;
+
   align-items: center;
   gap: 6px;
+ text-align: center; 
 }
 
 .date-cell i {
   font-size: 14px;
   color: var(--1-brown);
   opacity: 0.7;
+  text-align: center; 
 }
 
 /* Status badges */
@@ -448,12 +429,12 @@ table.customers-table tbody td.col-status { text-align: center; }
 }
 
 /* Actions column */
-table.customers-table tbody td.col-actions { text-align: right; }
+table.customers-table tbody td.col-actions { text-align: center; }
 
 .actions-cell {
   display: flex;
   align-items: center;
-  justify-content: flex-end;
+  justify-content: center;
   gap: 10px;
 }
 
@@ -504,29 +485,24 @@ table.customers-table tbody td.col-actions { text-align: right; }
   box-sizing: border-box;
 }
 
-.page-btn {
-  cursor: pointer;
-  border: 0;
-  padding: 6px 10px;
-  background-color: rgba(231, 230, 226, 0.55);
-  height: 36px;
-  border-radius: var(--br-20);
-  display: inline-flex;
+.page-btn{
+  display: flex;
   align-items: center;
-  justify-content: center;
-  gap: 10px;
-  font-family: var(--font-inter);
-  font-size: 14px;
+  gap: 6px;
+  background: rgba(252, 248, 238, 0.9);
+  border: 1px solid rgba(62, 44, 35, 0.2);
+  border-radius: var(--br-10);
+  padding: 8px 18px;
+  cursor: pointer;
+  font-size: var(--fs-14);
   font-weight: 500;
-  letter-spacing: -0.04em;
+  font-family: var(--font-inter);
   color: var(--1-brown);
   transition: background 0.15s;
-  text-decoration: none;
-  box-sizing: border-box;
 }
-
-.page-btn:hover    { background-color: rgba(207, 204, 201, 0.55); }
-.page-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+.page-btn:hover    { background: rgba(207, 204, 201, 0.3); }
+.page-btn:disabled { opacity: 0.38; cursor: not-allowed; }
+.page-btn i        { font-size: 14px; }
 
 /* ============================================================
    MODALS
@@ -535,7 +511,9 @@ table.customers-table tbody td.col-actions { text-align: right; }
   display: none;
   position: fixed;
   inset: 0;
-  background: rgba(0, 0, 0, 0.45);
+  background-color: rgba(30, 25, 20, 0.68);
+  backdrop-filter: blur(41px);
+  -webkit-backdrop-filter: blur(41px);
   z-index: 1000;
   align-items: center;
   justify-content: center;

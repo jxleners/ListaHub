@@ -846,7 +846,7 @@ $activePage = 'restock';
 #img-preview-box {
   position: relative;
   border-radius: 15px;
-  padding: 20px 20px 16px;
+  padding: 50px 20px 16px;
   width: 360px;
   max-width: 90vw;
   text-align: center;
@@ -1007,6 +1007,7 @@ $activePage = 'restock';
       <form method="post" id="batch-restock-form">
         <input type="hidden" name="action" value="batch_restock"/>
 
+      <div class="tbody-scroll">
         <div class="table-scroll-wrapper">
           <div class="table-wrapper">
             <table class="restock-table">
@@ -1142,7 +1143,7 @@ $activePage = 'restock';
             </table>
           </div>
         </div>
-
+      </div>
         <!-- Pagination Row -->
         <div class="pagination-row">
           <?php if ($current_page > 1): ?>
@@ -1150,7 +1151,7 @@ $activePage = 'restock';
               <i class="bi bi-arrow-left"></i> Prev
             </a>
           <?php else: ?>
-            <button class="btn-page" disabled style="opacity:0.4;cursor:default;">
+            <button class="btn-page" disabled >
               <i class="bi bi-arrow-left"></i> Prev
             </button>
           <?php endif; ?>
@@ -1160,7 +1161,7 @@ $activePage = 'restock';
               Next <i class="bi bi-arrow-right"></i>
             </a>
           <?php else: ?>
-            <button class="btn-page" disabled style="opacity:0.4;cursor:default;">
+            <button class="btn-page" disabled >
               Next <i class="bi bi-arrow-right"></i>
             </button>
           <?php endif; ?>

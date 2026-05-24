@@ -551,7 +551,7 @@ $activePage = 'dashboard';
                 <i class="bi bi-clock-history"></i>
               </span>
             </div>
-            <span class="cust-label">Unsettled Accounts</span>
+            <span class="cust-label">Unsettled Customers</span>
           </div>
           <div class="cust-value-wrap">
             <p class="cust-value red"><?= (int)($custRow['unsettled_count'] ?? 0) ?> Customers</p>

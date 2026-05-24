@@ -48,18 +48,6 @@ $activePage = 'pos';
   <link rel="stylesheet" href="pos.css"/>
 
   <style>
-    .table-wrap {
-      overflow-x: auto;
-      overflow-y: auto;
-    }
-    .table-inner {
-      max-height: 480px;
-      overflow-y: auto;
-    }
-    #pos-tbody .tbody-row {
-      display: flex;
-      flex-direction: column;
-    }
     #pos-modal-overlay {
   position: fixed; inset: 0;
   background: rgba(0,0,0,0.45);

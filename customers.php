@@ -103,44 +103,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     }
 
                 } else {
-                    /* No payment — manual status/date update only */
-                    if ($status === 'Fully Paid' && $currentBalance > 0) {
-                        /* Force-close: zero out the balance and mark paid */
-                        $pdo->prepare("
-                            UPDATE Debt
-                            SET remaining_balance = 0,
-                                status            = 'Fully Paid',
-                                settlement_date   = :sd
-                            WHERE debt_id = :debt_id
-                        ")->execute([
-                            ':sd'      => !empty($settlement_date) ? $settlement_date : date('Y-m-d'),
-                            ':debt_id' => $debt_id,
-                        ]);
-
-                        /* Sync Customer.total_outstanding */
-                        $pdo->prepare("
-                            UPDATE Customer
-                            SET total_outstanding = GREATEST(total_outstanding - :bal, 0)
-                            WHERE customer_id = :customer_id
-                        ")->execute([
-                            ':bal'         => $currentBalance,
-                            ':customer_id' => $customer_id,
-                        ]);
-
-                    } else {
-                        /* Just update settlement date and/or status label */
-                        $pdo->prepare("
-                            UPDATE Debt
-                            SET status          = :status,
-                                settlement_date = :sd
-                            WHERE debt_id = :debt_id
-                        ")->execute([
-                            ':status'  => $status,
-                            ':sd'      => !empty($settlement_date) ? $settlement_date : null,
-                            ':debt_id' => $debt_id,
-                        ]);
-                    }
-
+                    /* No payment — just update name/contact, status stays as-is in DB */
                     $pdo->commit();
                     $message = 'Customer updated successfully.';
                 }
@@ -206,17 +169,26 @@ try {
     /* ── Summary stats ── */
     $summaryStmt = $pdo->prepare("
         SELECT
-            COUNT(DISTINCT CASE WHEN co.total_remaining > 0 THEN co.customer_id END) AS unsettled_count,
-            COUNT(DISTINCT co.customer_id)                                            AS total_customers,
-            COALESCE(SUM(co.total_remaining), 0)                                     AS total_credit
-        FROM vw_customer_outstanding co
-        WHERE co.customer_id IN (
-            SELECT DISTINCT s.customer_id
-            FROM Sale s
-            JOIN Sale_Item si ON si.sale_id   = s.sale_id
+            COUNT(DISTINCT c.customer_id)                                      AS total_customers,
+            COUNT(DISTINCT CASE WHEN d_agg.remaining > 0
+                           THEN c.customer_id END)                             AS unsettled_count,
+            COALESCE(SUM(d_agg.remaining), 0)                                  AS total_credit
+        FROM Customer c
+        LEFT JOIN (
+            SELECT s.customer_id,
+                   SUM(d.remaining_balance) AS remaining
+            FROM Debt d
+            JOIN Sale s ON s.sale_id = d.sale_id
+            WHERE s.customer_id IS NOT NULL
+            GROUP BY s.customer_id
+        ) d_agg ON d_agg.customer_id = c.customer_id
+        WHERE c.customer_id IN (
+            SELECT DISTINCT s2.customer_id
+            FROM Sale s2
+            JOIN Sale_Item si ON si.sale_id   = s2.sale_id
             JOIN Product   p  ON p.product_id = si.product_id
             WHERE p.user_id = :user_id
-              AND s.customer_id IS NOT NULL
+              AND s2.customer_id IS NOT NULL
         )
     ");
     $summaryStmt->execute([':user_id' => $user_id]);
@@ -573,7 +545,7 @@ $activePage = 'customers';
             <div class="summary-card card-unsettled">
               <div class="card-inner">
                 <div class="card-icon-placeholder icon-red">
-                  <i class="bi bi-calendar-x-fill"></i>
+                  <i class="bi bi-clock-history"></i>
                 </div>
                 <div class="card-texts">
                   <span class="card-label">Unsettled Customers</span>
@@ -687,7 +659,7 @@ $activePage = 'customers';
                     <?php if ($hasDate): ?>
                       <div class="date-cell">
                         <?= htmlspecialchars(date('m/d/y', strtotime($row['settlement_date']))) ?>
-                        <i class="bi bi-calendar3"></i>
+                        
                       </div>
                     <?php else: ?>
                       –
@@ -812,31 +784,34 @@ $activePage = 'customers';
                    style="opacity:0.7;cursor:not-allowed;" />
           </div>
           <p class="ec-balance-preview">
-            Original debt: ₱<span id="edit_original_display">0.00</span>
-            &nbsp;·&nbsp; After payment: ₱<span id="edit_after_display">—</span>
+            Original debt: ₱ <span id="edit_original_display">0.00</span>
+            &nbsp;·&nbsp; After payment: ₱ <span id="edit_after_display">—</span>
           </p>
         </div>
 
-        <!-- Settlement Date | Status | Amount Paid -->
+        
+        <!-- Status (read-only) | Amount Paid -->
         <div class="ec-row-3">
 
-          <div class="ec-field">
-            <label class="ec-label">Settlement Date</label>
-            <div class="ec-input-wrap ec-date-wrap">
-              <i class="bi bi-calendar3 ec-cal-icon"></i>
-              <input class="ec-input ec-input-pl" type="date" name="settlement_date" id="edit_settlement_date" />
-            </div>
-          </div>
+          <!-- hidden fields so PHP still receives them -->
+          <input type="hidden" name="settlement_date" id="edit_settlement_date" />
+          <input type="hidden" name="status"          id="edit_status" />
 
           <div class="ec-field">
             <label class="ec-label">Status</label>
             <div class="ec-input-wrap ec-status-wrap" id="ec_status_display">
-              <select class="ec-select-status" name="status" id="edit_status"
-                      onchange="ecUpdateStatusDisplay(this); ecAutoFillOnFullyPaid();">
-                <option value="Unpaid">Unpaid</option>
-                <option value="Partially Paid">Partially Paid</option>
-                <option value="Fully Paid">Fully Paid</option>
-              </select>
+              <span class="ec-select-status" id="edit_status_label"
+                    style="display:block;padding:10px 12px;font-size:14px;font-weight:700;font-style:italic;letter-spacing:-0.04em;">
+                —
+              </span>
+            </div>
+          </div>
+
+          <div class="ec-field">
+            <label class="ec-label">Settlement Date</label>
+            <div class="ec-input-wrap" id="ec_settlement_display"
+                 style="opacity:0.7;cursor:not-allowed;padding:10px 14px;font-family:Inter,sans-serif;font-size:15px;color:#3e2c23;letter-spacing:-0.04em;">
+              —
             </div>
           </div>
 
@@ -909,9 +884,8 @@ $activePage = 'customers';
     });
   });
 
-  /* Tracks the current remaining balance for live calculation */
-  var _currentBalance  = 0;
-  var _originalAmount  = 0;
+  var _currentBalance = 0;
+  var _originalAmount = 0;
 
   /* ── Open Edit Customer Modal ── */
   function openEditModal(creditId, customerId, customerName, contactNumber,
@@ -920,8 +894,8 @@ $activePage = 'customers';
     _currentBalance = remainingBalance;
     _originalAmount = originalAmount;
 
-    document.getElementById('edit_credit_id').value   = creditId;
-    document.getElementById('edit_customer_id').value = customerId;
+    document.getElementById('edit_credit_id').value    = creditId;
+    document.getElementById('edit_customer_id').value  = customerId;
     document.getElementById('edit_customer_name').value = customerName;
 
     /* Split "address || phone" */
@@ -937,15 +911,48 @@ $activePage = 'customers';
       parseFloat(originalAmount).toLocaleString('en-PH', {minimumFractionDigits:2, maximumFractionDigits:2});
     document.getElementById('edit_after_display').textContent = '—';
 
-    document.getElementById('edit_settlement_date').value = settlementDate;
-    document.getElementById('edit_amount_paid').value     = '';
-    document.getElementById('edit_notes').value           = '';
+    /* Clear amount paid */
+    document.getElementById('edit_amount_paid').value = '';
 
-    var sel = document.getElementById('edit_status');
-    sel.value = status;
-    ecUpdateStatusDisplay(sel);
+    document.getElementById('edit_notes').value = '';
+
+    /* Set initial auto status & settlement display */
+    ecSetAutoStatus(remainingBalance, originalAmount, settlementDate);
 
     openModal('editModal');
+  }
+
+  /* ── Derive status automatically from balances ── */
+  function ecSetAutoStatus(remaining, original, existingSettlement) {
+    var status;
+    if (remaining <= 0) {
+      status = 'Fully Paid';
+    } else if (remaining < original) {
+      status = 'Partially Paid';
+    } else {
+      status = 'Unpaid';
+    }
+
+    /* Write hidden fields for PHP */
+    document.getElementById('edit_status').value = status;
+
+    /* Today's date as yyyy-mm-dd */
+    var today = new Date().toISOString().slice(0, 10);
+    var settlementVal = (status === 'Fully Paid') ? (existingSettlement || today) : '';
+    document.getElementById('edit_settlement_date').value = settlementVal;
+
+    /* Update visible status label */
+    ecUpdateStatusDisplay(status);
+
+    /* Update visible settlement date */
+    var sdEl = document.getElementById('ec_settlement_display');
+    if (settlementVal) {
+      /* Format as mm/dd/yy for display */
+      var parts = settlementVal.split('-');
+      sdEl.textContent = parts[1] + '/' + parts[2] + '/' + parts[0].slice(2);
+    } else {
+      sdEl.textContent = '—';
+    }
   }
 
   /* ── Live balance preview as user types amount paid ── */
@@ -957,36 +964,39 @@ $activePage = 'customers';
     if (paid <= 0) {
       el.textContent = '—';
       el.style.color = '';
+      /* Revert to original status */
+      ecSetAutoStatus(_currentBalance, _originalAmount, '');
     } else if (after < 0) {
       el.textContent = 'Exceeds balance!';
       el.style.color = '#cc0000';
     } else {
       el.textContent = after.toLocaleString('en-PH', {minimumFractionDigits:2, maximumFractionDigits:2});
       el.style.color = after === 0 ? '#159459' : '#e6a817';
-
-      /* Auto-set status */
-      var sel = document.getElementById('edit_status');
-      sel.value = (after === 0) ? 'Fully Paid' : 'Partially Paid';
-      ecUpdateStatusDisplay(sel);
+      /* Auto-derive status from projected balance */
+      ecSetAutoStatus(after, _originalAmount, '');
     }
   }
 
-  /* ── When status is set to Fully Paid, auto-fill payment = remaining ── */
-  function ecAutoFillOnFullyPaid() {
-    var sel = document.getElementById('edit_status');
-    if (sel.value === 'Fully Paid') {
-      document.getElementById('edit_amount_paid').value = _currentBalance.toFixed(2);
-      ecUpdateAfterBalance();
-    }
-  }
+  /* ── Colour the status display label ── */
+  function ecUpdateStatusDisplay(status) {
+    var wrap  = document.getElementById('ec_status_display');
+    var label = document.getElementById('edit_status_label');
 
-  /* ── Colour the Status select based on value ── */
-  function ecUpdateStatusDisplay(sel) {
-    var wrap = document.getElementById('ec_status_display');
     wrap.classList.remove('ec-status-unpaid', 'ec-status-partial', 'ec-status-paid');
-    if      (sel.value === 'Unpaid')         wrap.classList.add('ec-status-unpaid');
-    else if (sel.value === 'Partially Paid') wrap.classList.add('ec-status-partial');
-    else if (sel.value === 'Fully Paid')     wrap.classList.add('ec-status-paid');
+
+    if (status === 'Unpaid') {
+      wrap.classList.add('ec-status-unpaid');
+      label.textContent  = 'Unpaid';
+      label.style.color  = '#ff383c';
+    } else if (status === 'Partially Paid') {
+      wrap.classList.add('ec-status-partial');
+      label.textContent  = 'Partially Paid';
+      label.style.color  = '#e6a817';
+    } else if (status === 'Fully Paid') {
+      wrap.classList.add('ec-status-paid');
+      label.textContent  = 'Fully Paid';
+      label.style.color  = '#159459';
+    }
   }
 
   /* ── Open Delete Modal ── */

@@ -171,7 +171,9 @@ body {
   display: flex;
   flex-direction: column;
   gap: 14px;
+  
 }
+
 
 /* ─── Action bar ─── */
 .table-actions {
@@ -478,27 +480,27 @@ body {
 .badge-in-stock  {
   background: transparent;
   color: var(--green);
-  border: 1.5px solid var(--green);
+  border: 1px solid var(--green);
 }
 .badge-low-stock {
   background: transparent;
-  color: #c97000;
-  border: 1.5px solid #e8950a;
+  color: var(--Accents-Orange);
+  border: 1px solid var(--Accents-Orange);
 }
 .badge-out-stock {
   background: rgba(235, 69, 58, 0.08);
   color: var(--red);
-  border: 1.5px solid var(--red);
+  border: 1px solid var(--red);
 }
 .badge-near-exp  {
   background: transparent;
   color: var(--blue);
-  border: 1.5px solid var(--blue);
+  border: 1px solid var(--blue);
 }
 .badge-expired   {
   background: rgba(235, 69, 58, 0.08);
   color: var(--red);
-  border: 1.5px solid var(--red);
+  border: 1px solid var(--red);
 }
 
 /* ── Action icon buttons (eye + trash) ── */
@@ -575,39 +577,7 @@ body {
   padding-top: 4px;
 }
 
-.btn-cancel-modal {
-  border-radius: var(--br-231);
-  background-color: rgba(252, 248, 238, 0.9);
-  padding: var(--padding-10) var(--padding-20);
-  display: flex; align-items: center; justify-content: center;
-  cursor: pointer;
-  border: none;
-  font-size: var(--fs-16);
-  letter-spacing: -0.04em;
-  font-weight: 500;
-  font-family: var(--font-inter);
-  color: var(--1-brown);
-  text-decoration: none;
-  transition: background 0.15s;
-}
-.btn-cancel-modal:hover { background-color: rgba(207, 204, 201, 0.4); }
 
-.btn-complete {
-  cursor: pointer;
-  border: 2px solid var(--1-brown);
-  padding: var(--padding-10) var(--padding-20);
-  background-color: var(--color-khaki-100);
-  box-shadow: var(--shadow-inner-1);
-  border-radius: var(--br-231);
-  display: flex; align-items: center; justify-content: center;
-  font-size: var(--fs-16);
-  letter-spacing: -0.04em;
-  font-weight: 600;
-  font-family: var(--font-inter);
-  color: var(--1-brown);
-  transition: background 0.15s;
-}
-.btn-complete:hover { background-color: var(--color-darkkhaki); }
 
 /* ═══════════════════════════════════════════════════════════════
    RESPONSIVE
@@ -1153,7 +1123,7 @@ body {
 #img-preview-box {
   position: relative;
   border-radius: 15px;
-  padding: 20px 20px 16px;
+  padding: 50px 20px 16px;
   width: 360px;
   max-width: 90vw;
   text-align: center;

@@ -153,14 +153,17 @@ if ($type === 'cash') {
                 @p_message
             )"
         );
-        $stmt->execute([
-            ':user_id'        => $user_id,
-            ':customer_name'  => $custName,
-            ':contact_number' => $custContact,
-            ':address'        => $custAddress,
-            ':product_ids'    => $productIdsStr,
-            ':quantities'     => $quantitiesStr,
-        ]);
+        // Combine address + contact the same way customers.php expects: "address || phone"
+$combinedContact = $custAddress . ' || ' . $custContact;
+
+$stmt->execute([
+    ':user_id'        => $user_id,
+    ':customer_name'  => $custName,
+    ':contact_number' => $combinedContact,
+    ':address'        => $custAddress,
+    ':product_ids'    => $productIdsStr,
+    ':quantities'     => $quantitiesStr,
+]);
         $stmt->closeCursor();
 
         $out = $pdo->query(

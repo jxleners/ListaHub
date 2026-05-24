@@ -1198,6 +1198,7 @@ $activePage = 'manage-products';
       </div><!-- /table-actions -->
 
       <!-- Table -->
+       <div class="tbody-scroll">
       <div class="table-wrap">
         <div class="table-inner">
           <div class="table2">
@@ -1217,7 +1218,7 @@ $activePage = 'manage-products';
               <div class="thead-divider"></div>
             </div>
 
-            <div class="tbody-scroll">
+            
               <div class="tbody" id="inv-tbody">
                 <?php if (empty($products)): ?>
                   <p class="no-products-msg">No products found. Add a product to get started.</p>
@@ -1283,7 +1284,7 @@ $activePage = 'manage-products';
 
           </div>
         </div>
-        <div class="table-scroll-indicator"></div>
+        
       </div>
 
       <!-- Pagination -->
