@@ -47,3 +47,6 @@
 [24-May-2026 16:09:48 Europe/Berlin] Product addition log error: SQLSTATE[42S22]: Column not found: 1054 Unknown column 'selling_price' in 'field list'
 [24-May-2026 17:35:44 Europe/Berlin] Product addition log error: SQLSTATE[42S22]: Column not found: 1054 Unknown column 'selling_price' in 'field list'
 [24-May-2026 17:35:46 Europe/Berlin] Product addition log error: SQLSTATE[42S22]: Column not found: 1054 Unknown column 'selling_price' in 'field list'
+[25-May-2026 15:47:48 Europe/Berlin] Product addition log error: SQLSTATE[42S22]: Column not found: 1054 Unknown column 'selling_price' in 'field list'
+[25-May-2026 15:49:40 Europe/Berlin] Edit log error: SQLSTATE[42S22]: Column not found: 1054 Unknown column 'selling_price' in 'field list'
+[25-May-2026 15:58:17 Europe/Berlin] Edit log error: SQLSTATE[42S22]: Column not found: 1054 Unknown column 'selling_price' in 'field list'
