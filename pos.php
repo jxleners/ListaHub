@@ -505,7 +505,7 @@ if (items === 0) {
   }
   if (payMethod !== 'utang' && tendered < total) {
     showPosModal('warning', 'Insufficient Amount',
-      'Yung pera mo na (₱' + tendered.toFixed(2) + ') ay kulang sa amount ng mga binili mo (₱' + total.toFixed(2) + ').');
+      'Baby, your money is not enough po 🥺👉👈');
     return;
   }
 

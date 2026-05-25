@@ -32,7 +32,6 @@ if (isset($_SESSION['user_id'])) {
       <nav class="nav">
         <div class="logo">
           <div class="logos">
-            <!-- INSERT: Nav logo image URL below (dark logo on light background) -->
             <img
               class="listahub-logo-3-1"
               loading="lazy"
@@ -42,11 +41,9 @@ if (isset($_SESSION['user_id'])) {
           </div>
         </div>
         <div class="menu">
-          <!-- Log in button — stays on this page (active state) -->
           <a class="menus" href="index.php">
             <div class="log-in">Log in</div>
           </a>
-          <!-- Sign up button — goes to signup.php -->
           <a class="menus2" href="signup.php">
             <div class="sign-up">Sign up</div>
           </a>
@@ -55,135 +52,96 @@ if (isset($_SESSION['user_id'])) {
 
       <!-- ── MAIN CONTENT ── -->
       <main class="context-parent">
-
         <!-- Left placeholder (brand text positioned absolutely) -->
         <div class="context"></div>
 
         <!-- ── AUTH CARD ── -->
         <section class="sign-up-card">
           <form class="logos-parent" method="POST" action="login.php">
-
             <!-- Card logo -->
             <div class="logos2">
-              <!-- INSERT: Card logo image URL below (logo for the card, e.g. yellow/cream version) -->
->>>>>>> eb86da8 (moved css)
               <img
-                class="listahub-logo-3-1"
+                class="listahub-logo-1"
                 loading="lazy"
-                alt="ListaHub Logo"
-                src="pics_icons/ListaHub-logo-3-1@2x.png"
+                alt="ListaHub"
+                src="pics_icons/ListaHub-Logo-1@2x.png"
               />
             </div>
-          </div>
-          <div class="menu">
-            <!-- Log in button — stays on this page (active state) -->
-            <a class="menus" href="index.php">
-              <div class="log-in">Log in</div>
-            </a>
-            <!-- Sign up button — goes to signup.php -->
-            <a class="menus2" href="signup.php">
-              <div class="sign-up">Sign up</div>
-            </a>
-          </div>
-        </nav>
 
-        <!-- ── MAIN CONTENT ── -->
-        <main class="context-parent">
-          <!-- Left placeholder (brand text positioned absolutely) -->
-          <div class="context"></div>
-
-          <!-- ── AUTH CARD ── -->
-          <section class="sign-up-card">
-            <form class="logos-parent" method="POST" action="login.php">
-              <!-- Card logo -->
-              <div class="logos2">
-                <!-- INSERT: Card logo image URL below (logo for the card, e.g. yellow/cream version) -->
-                <img
-                  class="listahub-logo-1"
-                  loading="lazy"
-                  alt="ListaHub"
-                  src="pics_icons/ListaHub-Logo-1@2x.png"
-                />
-              </div>
-
-              <!-- Email / Username field -->
-              <div class="emailiiactive">
-                <div class="stateactive">
-                  <label class="label" for="login">Email or username</label>
-                  <div class="input-field">
-                    <!-- INSERT: User/person icon SVG or image URL below -->
-                    <img
-                      class="vector-icon"
-                      alt="user icon"
-                      src="pics_icons/Vector.svg"
-                    />
-                    <input
-                      class="placeholder"
-                      id="login"
-                      name="login"
-                      placeholder="listahub@gmail.com"
-                      type="text"
-                      required
-                    />
-                  </div>
+            <!-- Email / Username field -->
+            <div class="emailiiactive">
+              <div class="stateactive">
+                <label class="label" for="login">Email or username</label>
+                <div class="input-field">
+                  <img
+                    class="vector-icon"
+                    alt="user icon"
+                    src="pics_icons/Vector.svg"
+                  />
+                  <input
+                    class="placeholder"
+                    id="login"
+                    name="login"
+                    placeholder="listahub@gmail.com"
+                    type="text"
+                    required
+                  />
                 </div>
               </div>
+            </div>
 
-              <!-- Password field -->
-              <div class="emailiiactive">
-                <div class="stateactive">
-                  <label class="label" for="password">Password</label>
-                  <div class="input-field">
-                    <!-- INSERT: Lock/password icon SVG or image URL below -->
-                    <img
-                      class="vector-icon2"
-                      alt="lock icon"
-                      src="pics_icons/Vector1.svg"
-                    />
-                    <input
-                      class="placeholder2"
-                      id="password"
-                      name="password"
-                      placeholder="enter your password"
-                      type="password"
-                      required
-                    />
-                  </div>
+            <!-- Password field -->
+            <div class="emailiiactive">
+              <div class="stateactive">
+                <label class="label" for="password">Password</label>
+                <div class="input-field">
+                  <img
+                    class="vector-icon2"
+                    alt="lock icon"
+                    src="pics_icons/Vector1.svg"
+                  />
+                  <input
+                    class="placeholder2"
+                    id="password"
+                    name="password"
+                    placeholder="enter your password"
+                    type="password"
+                    required
+                  />
                 </div>
               </div>
+            </div>
 
-              <!-- Terms, button, footer -->
-              <div class="section">
-                <!-- Log in — submits form; login.php should redirect to dashboard.php on success -->
-                <button class="buttons" type="submit">
-                  <div class="text2">Log in</div>
-                </button>
+            <!-- Terms, button, footer -->
+            <div class="section">
+              <button class="buttons" type="submit">
+                <div class="text2">Log in</div>
+              </button>
 
-                <div class="text3">
-                  <span class="dont-have-an">Don't have an account? </span>
-                  <!-- Sign up link — goes to signup.php -->
-                  <a class="register" href="signup.php">Register</a>
-                </div>
+              <div class="text3">
+                <span class="dont-have-an">Don't have an account? </span>
+                <a class="register" href="signup.php">Register</a>
               </div>
-            </form>
-          </section>
-        </main>
+            </div>
+          </form>
+        </section>
+      </main>
 
-        <!-- Brand title (positioned absolutely over background) -->
-        <h1 class="listahub">ListaHub</h1>
+      <!-- Brand title (positioned absolutely over background) -->
+      <h1 class="listahub">ListaHub</h1>
 
-        <!-- Brand description (positioned absolutely) -->
-        <div class="listahub-is-a">
-          ListaHub is a database-driven Point-of-Sale (POS) and Inventory
-          Management System developed to provide an efficient, organized, and
-          automated solution for managing the daily operations of small
-          businesses, particularly sari-sari stores and mini groceries. It
-          includes secure user authentication, product and category management,
-          inventory and stock monitoring, stock-in and stock-out recording,
-          sales and transaction processing, customer debt management, and csv
-          import and export.
-        </div>
-      </section>
-    </div>
-  </body>
+      <!-- Brand description (positioned absolutely) -->
+      <div class="listahub-is-a">
+        ListaHub is a database-driven Point-of-Sale (POS) and Inventory
+        Management System developed to provide an efficient, organized, and
+        automated solution for managing the daily operations of small
+        businesses, particularly sari-sari stores and mini groceries. It
+        includes secure user authentication, product and category management,
+        inventory and stock monitoring, stock-in and stock-out recording,
+        sales and transaction processing, customer debt management, and csv
+        import and export.
+      </div>
+    </section>
+  </div>
+</body>
 </html>
