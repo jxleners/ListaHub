@@ -1584,7 +1584,7 @@ function closeImgPreview() {
   <div id="del-modal-box" onclick="event.stopPropagation()">
     <div id="del-modal-icon">🗑️</div>
     <div id="del-modal-title">Delete Product</div>
-    <div id="del-modal-body">Sure ka na bang idedelete? Hindi na to mababalik.</div>
+    <div id="del-modal-body"> Are you sure you want to delete this product? This cannot be undone.</div>
     <div style="display:flex; gap:10px; justify-content:center; margin-top:20px;">
       <button onclick="cancelDelModal()" style="background:#6b7280; color:#fff; border:none; border-radius:8px; padding:10px 32px; font-size:1rem; cursor:pointer;">Cancel</button>
       <button id="del-modal-confirm-btn" style="background:#dc2626; color:#fff; border:none; border-radius:8px; padding:10px 32px; font-size:1rem; cursor:pointer;">Delete</button>
