@@ -1,9 +1,4 @@
-/* global_sidebar.css */
-body {
-  margin: 0;
-  line-height: normal;
-  position: relative;
-}
+/* global_sidebar.css */body { margin: 0; line-height: normal; position: relative; }
 
 :root {
   /* ── Spacing ── */

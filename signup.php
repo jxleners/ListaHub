@@ -21,8 +21,8 @@ if (isset($_SESSION['user_id'])) {
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Poppins:wght@900&display=swap" />
 
   <!-- Stylesheets -->
-  <link rel="stylesheet" href="global_signup.css" />
-  <link rel="stylesheet" href="signup.css" />
+  <link rel="stylesheet" href="css/global_signup.css" />
+  <link rel="stylesheet" href="css/signup.css" />
 </head>
 <body>
 

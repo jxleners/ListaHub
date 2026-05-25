@@ -175,13 +175,13 @@ $activePage = 'dashboard';
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css"/>
 
   <!-- Global CSS (variables, reset) -->
-  <link rel="stylesheet" href="global_sidebar.css"/>
-  <link rel="stylesheet" href="global_dashboard.css"/>
+  <link rel="stylesheet" href="css/global_sidebar.css"/>
+  <link rel="stylesheet" href="css/global_dashboard.css"/>
 
   <!-- Component CSS -->
-  <link rel="stylesheet" href="sidebar.css"/>
-  <link rel="stylesheet" href="dashboard.css"/>
-  <link rel="stylesheet" href="main-body.css"/>
+  <link rel="stylesheet" href="css/sidebar.css"/>
+  <link rel="stylesheet" href="css/dashboard.css"/>
+  <link rel="stylesheet" href="css/main-body.css"/>
 </head>
 <body>
 

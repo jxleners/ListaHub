@@ -8,29 +8,65 @@ if (isset($_SESSION['user_id'])) {
 ?>
 <!DOCTYPE html>
 <html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Log In – ListaHub</title>
-    <link rel="stylesheet" href="global_index.css" />
-    <link rel="stylesheet" href="index.css" />
-    <link
-      rel="stylesheet"
-      href="https://fonts.googleapis.com/css2?family=Inter:ital,wght@0,400;0,500;0,600;0,700;1,400;1,600;1,700&display=swap"
-    />
-    <link
-      rel="stylesheet"
-      href="https://fonts.googleapis.com/css2?family=Poppins:wght@900&display=swap"
-    />
-  </head>
-  <body>
-    <div class="login-page">
-      <section class="body-login">
-        <!-- ── NAVBAR ── -->
-        <nav class="nav">
-          <div class="logo">
-            <div class="logos">
-              <!-- INSERT: Nav logo image URL below (dark logo on light background) -->
+
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Log In – ListaHub</title>
+  <link rel="stylesheet" href="css/global_index.css"/>
+  <link rel="stylesheet" href="css/index.css"/>
+  <link
+    rel="stylesheet"
+    href="https://fonts.googleapis.com/css2?family=Inter:ital,wght@0,400;0,500;0,600;0,700;1,400;1,600;1,700&display=swap"
+  />
+  <link
+    rel="stylesheet"
+    href="https://fonts.googleapis.com/css2?family=Poppins:wght@900&display=swap"
+  />
+</head>
+<body>
+  <div class="login-page">
+    <section class="body-login">
+
+      <!-- ── NAVBAR ── -->
+      <nav class="nav">
+        <div class="logo">
+          <div class="logos">
+            <!-- INSERT: Nav logo image URL below (dark logo on light background) -->
+            <img
+              class="listahub-logo-3-1"
+              loading="lazy"
+              alt="ListaHub Logo"
+              src="pics_icons/ListaHub-logo-3-1@2x.png"
+            />
+          </div>
+        </div>
+        <div class="menu">
+          <!-- Log in button — stays on this page (active state) -->
+          <a class="menus" href="index.php">
+            <div class="log-in">Log in</div>
+          </a>
+          <!-- Sign up button — goes to signup.php -->
+          <a class="menus2" href="signup.php">
+            <div class="sign-up">Sign up</div>
+          </a>
+        </div>
+      </nav>
+
+      <!-- ── MAIN CONTENT ── -->
+      <main class="context-parent">
+
+        <!-- Left placeholder (brand text positioned absolutely) -->
+        <div class="context"></div>
+
+        <!-- ── AUTH CARD ── -->
+        <section class="sign-up-card">
+          <form class="logos-parent" method="POST" action="login.php">
+
+            <!-- Card logo -->
+            <div class="logos2">
+              <!-- INSERT: Card logo image URL below (logo for the card, e.g. yellow/cream version) -->
+>>>>>>> eb86da8 (moved css)
               <img
                 class="listahub-logo-3-1"
                 loading="lazy"

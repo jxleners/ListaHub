@@ -1,18 +1,7 @@
 /* ============================================================
    global.css
    Shared reset, CSS variables, and base styles.
-   ============================================================ */
-
-*, *::before, *::after {
-  box-sizing: border-box;
-  margin: 0;
-  padding: 0;
-}
-
-body {
-  line-height: normal;
-  font-family: Inter, sans-serif;
-}
+   ============================================================ */*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }body { line-height: normal; font-family: Inter, sans-serif; }
 
 :root {
   /* ── Brand Colors ───────────────────────── */

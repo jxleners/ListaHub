@@ -454,11 +454,11 @@ $activePage = 'restock';
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet"/>
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css"/>
 
-  <link rel="stylesheet" href="global_sidebar.css"/>
-  <link rel="stylesheet" href="global_restock.css"/>
-  <link rel="stylesheet" href="sidebar.css"/>
-  <link rel="stylesheet" href="restock.css"/>
-  <link rel="stylesheet" href="main-body.css"/>
+  <link rel="stylesheet" href="css/global_sidebar.css"/>
+  <link rel="stylesheet" href="css/global_restock.css"/>
+  <link rel="stylesheet" href="css/sidebar.css"/>
+  <link rel="stylesheet" href="css/restock.css"/>
+  <link rel="stylesheet" href="css/main-body.css"/>
 
   <style>
   /* ═══════════════════════════════════════════════════════

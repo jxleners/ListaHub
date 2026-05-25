@@ -2,12 +2,7 @@
    Merged from global_sidebar.css + global_dashboard.css
    so that sidebar.css variables resolve identically to dashboard.php.
    DO NOT reorder — sidebar vars come first, then page-specific vars.
-*/
-
-body {
-  margin: 0;
-  line-height: normal;
-}
+*/body { margin: 0; line-height: normal; }
 
 :root {
 

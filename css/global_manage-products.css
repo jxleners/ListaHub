@@ -1,11 +1,6 @@
 /* global_manage-products.css
    Merged: original manage-products variables + add_prod variables
-   ---------------------------------------------------------------- */
-
-body {
-  margin: 0;
-  line-height: normal;
-}
+   ---------------------------------------------------------------- */body { margin: 0; line-height: normal; }
 
 :root {
   /* ── Spacing ── */

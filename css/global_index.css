@@ -1,8 +1,4 @@
-/* global_index.css — ListaHub design tokens */
-body {
-  margin: 0;
-  line-height: normal;
-}
+/* global_index.css — ListaHub design tokens */body { margin: 0; line-height: normal; }
 
 :root {
   /* ── Brand colors ── */

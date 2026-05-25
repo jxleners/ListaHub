@@ -175,13 +175,13 @@ $activePage = 'inv_history';
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Roboto:wght@600&display=swap" rel="stylesheet"/>
 
   <!-- Global CSS (variables, reset) -->
-  <link rel="stylesheet" href="global_sidebar.css"/>
-  <link rel="stylesheet" href="global_inv_history.css"/>
+  <link rel="stylesheet" href="css/global_sidebar.css"/>
+  <link rel="stylesheet" href="css/global_inv_history.css"/>
 
   <!-- Component CSS -->
-  <link rel="stylesheet" href="sidebar.css"/>
-  <link rel="stylesheet" href="inv_history.css"/>
-  <link rel="stylesheet" href="main-body.css"/>
+  <link rel="stylesheet" href="css/sidebar.css"/>
+  <link rel="stylesheet" href="css/inv_history.css"/>
+  <link rel="stylesheet" href="css/main-body.css"/>
 </head>
 <body>
 

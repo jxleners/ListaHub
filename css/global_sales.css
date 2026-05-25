@@ -1,12 +1,7 @@
 /* global_sales.css
    Load order in sales.php:
      global_sidebar.css → global_sales.css → sidebar.css → sales.css
-*/
-
-body {
-  margin: 0;
-  line-height: normal;
-}
+*/body { margin: 0; line-height: normal; }
 
 :root {
 

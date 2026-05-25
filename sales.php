@@ -176,13 +176,13 @@ $chartValuesJson = json_encode($chartValues);
   <title>Sales Analytics – ListaHub</title>
 
   <!-- Global CSS (variables, reset) -->
-   <link rel="stylesheet" href="global_sidebar.css"/>
-  <link rel="stylesheet" href="global_sales.css"/>
+   <link rel="stylesheet" href="css/global_sidebar.css"/>
+  <link rel="stylesheet" href="css/global_sales.css"/>
 
   <!-- Component CSS -->
-  <link rel="stylesheet" href="sidebar.css"/>
-  <link rel="stylesheet" href="sales.css"/>
-  <link rel="stylesheet" href="main-body.css"/>
+  <link rel="stylesheet" href="css/sidebar.css"/>
+  <link rel="stylesheet" href="css/sales.css"/>
+  <link rel="stylesheet" href="css/main-body.css"/>
 
   <!--
     Google Fonts – Inter
