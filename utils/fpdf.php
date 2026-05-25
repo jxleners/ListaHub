@@ -292,16 +292,42 @@ class FPDF
 
     protected function buildPdf()
     {
-        $pagesRoot = $this->_newObject();
-        $catalog = $this->_newObject();
-        $font = $this->_newObject();
+        $objects = [];
         $pageObjects = [];
+        $objectNumber = 4;
 
-        foreach ($this->pages as $index => $pageData) {
-            $content = $pageData['content'];
-            $contentObj = $this->_newObject();
-            $pageObj = $this->_newObject();
+        foreach ($this->pages as $pageData) {
+            $contentObj = $objectNumber++;
+            $pageObj = $objectNumber++;
             $pageObjects[] = $pageObj;
 
-            $this->objects[$contentObj] = "<< /Length " . strlen($content) . " >>\nstream\n" . $content . "\nendstream";
-            $this->objects[$pageObj] = "<< /Type /Page /Parent $pagesRoot 0 R /MediaBox [0 0 
+            $content = $pageData['content'];
+            $objects[$contentObj] = "<< /Length " . strlen($content) . " >>\nstream\n" . $content . "\nendstream";
+            $objects[$pageObj] = "<< /Type /Page /Parent 1 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 3 0 R >> >> /Contents $contentObj 0 R >>";
+        }
+
+        $kids = implode(' ', array_map(static fn($id) => "$id 0 R", $pageObjects));
+        $objects[1] = "<< /Type /Pages /Kids [$kids] /Count " . count($this->pages) . " >>";
+        $objects[2] = "<< /Type /Catalog /Pages 1 0 R >>";
+        $objects[3] = "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>";
+
+        $pdf = "%PDF-1.4\n";
+        $offsets = [];
+
+        foreach ($objects as $id => $body) {
+            $offsets[$id] = strlen($pdf);
+            $pdf .= $id . " 0 obj\n" . $body . "\nendobj\n";
+        }
+
+        $xrefOffset = strlen($pdf);
+        $pdf .= "xref\n0 " . (count($objects) + 1) . "\n0000000000 65535 f \n";
+
+        for ($i = 1; $i <= count($objects); $i++) {
+            $pdf .= sprintf("%010d 00000 n \n", $offsets[$i]);
+        }
+
+        $pdf .= "trailer\n<< /Size " . (count($objects) + 1) . " /Root 2 0 R >>\nstartxref\n" . $xrefOffset . "\n%%EOF";
+
+        return $pdf;
+    }
+}
