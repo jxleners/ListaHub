@@ -27,8 +27,34 @@
 .table-section { background: var(--gradient-1); border-radius: var(--br-15); border: var(--border-2); box-shadow: var(--shadow-drop); padding: 16px 18px 14px; display: flex; flex-direction: column; gap: 14px; }/* ─────────────────────────────────────────
    Toolbar (search + filter tabs)
 ───────────────────────────────────────── */
-.table-toolbar { display: flex; flex-direction: column; gap: 10px; }.toolbar-left { display: flex; align-items: center; gap: var(--gap-10); flex-wrap: nowrap; flex: 1; min-width: 0; }/* Search bar */
-.searchbar { display: flex; align-items: center; gap: 2px; background: rgba(255, 255, 255, 0.55); border: 1px solid rgba(62, 44, 35, 0.2); border-radius:  var(--br-231); padding: 7px 16px; flex: 1; min-width: 100px; max-width: 200px; }.searchbar img,
+/* ─────────────────────────────────────────
+   Toolbar (search + filter tabs)
+───────────────────────────────────────── */
+.table-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.toolbar-left {
+  display: flex;
+  align-items: center;
+  gap: var(--gap-10);
+  flex-wrap: nowrap;
+  flex: 1;
+  min-width: 0;
+}
+
+/* Push pagination to the far right */
+.pagination-row {
+  display: flex;
+  align-items: center;
+  gap: var(--gap-10);
+  margin-left: auto;
+  flex-shrink: 0;
+}/* Search bar */
+.searchbar { display: flex; align-items: center; gap: 2px; background: rgba(255, 255, 255, 0.55); border: 1px solid rgba(62, 44, 35, 0.2); border-radius:  var(--br-231); padding: 7px 16px; flex: 1; min-width: 100px; max-width: 300px; }.searchbar img,
 .searchbar i { width: var(--width-20); height: var(--height-20); flex-shrink: 0; color: var(--1-brown); font-size: 16px; opacity: 0.6; }.searchbar input[type="text"] { border: 0; outline: 0; background: transparent; font-family: var(--font-inter); font-size: var(--fs-14); color: var(--1-brown); width: 100%; }.searchbar input[type="text"]::placeholder { color: var(--1-brown); opacity: 0.5; }/* Filter tab buttons */
 .filter-tabs { display: flex; align-items: center; gap: var(--gap-10); flex-wrap: wrap; }.tab-btn { cursor: pointer; border: 1px solid rgba(62, 44, 35, 0.2); border-radius: var(--br-10); padding: 8px 18px; background-color: transparent; font-family: var(--font-inter); font-size: var(--fs-14); font-weight: 500; color: var(--1-brown); letter-spacing: -0.04em; text-decoration: none; transition: background 0.18s; white-space: nowrap; display: flex; align-items: center; gap: var(--gap-6); }.tab-btn:hover:not(.active) { background-color: var(--color-dimgray-200); }.tab-btn.active { background-color: var(--color-khaki-200); border: var(--border-1); box-shadow: var(--shadow-inner); }/* Import CSV button */
 .btn-import { cursor: pointer; border: 1px solid rgba(62, 44, 35, 0.2); border-radius: var(--br-10); padding: 5px var(--padding-10); background-color: transparent; font-family: var(--font-inter); font-size: var(--fs-15); font-weight: 500; color: var(--1-brown); letter-spacing: -0.04em; height: 41px; display: flex; align-items: center; text-align: right; gap: var(--gap-6); transition: background 0.18s; white-space: nowrap; }.btn-import:hover { background-color: var(--color-dimgray-200); }.btn-import img,

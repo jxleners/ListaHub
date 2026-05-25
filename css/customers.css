@@ -24,7 +24,7 @@ body { /* TODO: Replace with your background image, same as dashboard.php:
    ============================================================ */
 .table-container-wrap { align-self: stretch; border-radius: var(--br-15); background: var(--gradient-1); border: var(--border-1); box-sizing: border-box; padding: 10px; gap: 10px; display: flex; flex-direction: column; align-items: flex-start; max-width: 100%; }/* ── Table Actions Bar ── */
 .table-actions-bar { align-self: stretch; display: flex; flex-direction: column; align-items: flex-start; max-width: 100%; border-radius: var(--br-20); padding: 0 10px; box-sizing: border-box; }.actions-top-row { align-self: stretch; display: flex; align-items: center; justify-content: space-between; min-height: 37px; max-width: 100%; gap: 10px; flex-wrap: wrap; padding: 4px 0; }.actions-left { display: flex; align-items: center; gap: 15px; flex: 1; flex-wrap: wrap; }/* Search Bar */
-.searchbar { display: flex; align-items: center; gap: 15px; border-color: 1px solid rgba(62, 44, 35, 0.2); border-radius: 40px; background-color: var(--yellow-white-1); padding: 8px 20px; max-width: 247px; flex: 1; box-sizing: border-box; height: 37px; }/* TODO: Replace .searchbar-icon with:
+.searchbar { display: flex; align-items: center; gap: 15px; border-radius: 40px; background: rgba(255, 255, 255, 0.55); border: 1px solid rgba(62, 44, 35, 0.2); padding: 8px 20px; max-width: 247px; flex: 1; box-sizing: border-box; height: 37px; }/* TODO: Replace .searchbar-icon with:
    <img src="pics_icons/magnifying-glass.svg" class="searchbar-icon" alt="" />
    and remove the Bootstrap Icons <i> element.
 */
