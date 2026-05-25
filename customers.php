@@ -10,6 +10,39 @@ if (!isset($_SESSION['user_id'])) {
 }
 
 require_once './utils/lhdb.php';
+require_once './utils/fpdf_export.php';
+
+function truncateText(string $value, int $limit): string
+{
+    if ($limit <= 0) {
+        return $value;
+    }
+
+    if (function_exists('mb_strlen') && mb_strlen($value) > $limit) {
+        return mb_substr($value, 0, max(0, $limit - 1)) . '…';
+    }
+
+    if (strlen($value) > $limit) {
+        return substr($value, 0, max(0, $limit - 1)) . '…';
+    }
+
+    return $value;
+}
+
+function formatCustomerAmount(float $value): string
+{
+    return '₱ ' . number_format($value, 2);
+}
+
+function formatCustomerDate(?string $value): string
+{
+    if (empty($value)) {
+        return '—';
+    }
+
+    $timestamp = strtotime($value);
+    return $timestamp ? date('m/d/Y', $timestamp) : '—';
+}
 
 $user_id = (int) $_SESSION['user_id'];
 $message = '';
@@ -162,6 +195,124 @@ $currentPage = max(1, (int) ($_GET['page'] ?? 1));
 $offset      = ($currentPage - 1) * $perPage;
 $search      = trim($_GET['search'] ?? '');
 $filterStatus= trim($_GET['status'] ?? '');
+$exportRequested = ($_GET['export'] ?? '') === 'pdf';
+
+if ($exportRequested) {
+    try {
+        $pdo = getPDO();
+
+        $whereParts  = [];
+        $exportParams = [':user_id' => $user_id];
+
+        if ($search !== '') {
+            $whereParts[]             = "vdd.customer_name LIKE :search";
+            $exportParams[':search'] = "%$search%";
+        }
+
+        if ($filterStatus !== '') {
+            $whereParts[]             = "vdd.debt_status = :status";
+            $exportParams[':status'] = $filterStatus;
+        }
+
+        $whereClause = $whereParts ? ('AND ' . implode(' AND ', $whereParts)) : '';
+
+        $exportSql = "
+            SELECT
+                vdd.customer_id,
+                vdd.customer_name,
+                vdd.contact_number,
+                vdd.created_at,
+                vdd.debt_id           AS credit_id,
+                vdd.remaining_balance AS amount_owed,
+                vdd.original_amount,
+                vdd.settlement_date,
+                vdd.debt_status       AS status
+            FROM vw_customer_debt_detail vdd
+            WHERE vdd.customer_id IN (
+                SELECT DISTINCT s.customer_id
+                FROM Sale s
+                JOIN Sale_Item si ON si.sale_id   = s.sale_id
+                JOIN Product   p  ON p.product_id = si.product_id
+                WHERE p.user_id = :user_id
+                  AND s.customer_id IS NOT NULL
+            )
+            $whereClause
+            ORDER BY vdd.created_at DESC
+        ";
+
+        $exportStmt = $pdo->prepare($exportSql);
+        foreach ($exportParams as $key => $value) {
+            $exportStmt->bindValue($key, $value);
+        }
+        $exportStmt->execute();
+        $exportCustomers = $exportStmt->fetchAll(PDO::FETCH_ASSOC);
+
+        $pdf = new FPDF('P', 'mm', 'A4');
+        $pdf->SetAutoPageBreak(true, 12);
+        $pdf->SetFont('Helvetica', 'B', 16);
+        $pdf->SetTextColor(62, 44, 35);
+        $pdf->Cell(0, 8, 'ListaHub Customers Export', 0, 1, 'L');
+        $pdf->SetFont('Helvetica', '', 10);
+        $pdf->SetTextColor(60, 60, 60);
+        $pdf->Cell(0, 6, 'Generated on ' . date('F j, Y, g:i A'), 0, 1, 'L');
+
+        $filtersLabel = 'All customers';
+        $filterParts = [];
+        if ($search !== '') {
+            $filterParts[] = 'Search: ' . $search;
+        }
+        if ($filterStatus !== '') {
+            $filterParts[] = 'Status: ' . $filterStatus;
+        }
+        if ($filterParts !== []) {
+            $filtersLabel = implode(' | ', $filterParts);
+        }
+
+        $pdf->SetFont('Helvetica', '', 9);
+        $pdf->Cell(0, 5, 'Filters: ' . $filtersLabel, 0, 1, 'L');
+        $pdf->Ln(2);
+
+        $header = [
+            'Customer Name' => 60,
+            'Money Owed' => 28,
+            'Settlement Date' => 28,
+            'Status' => 28,
+        ];
+
+        $pdf->SetFont('Helvetica', 'B', 9);
+        $pdf->SetTextColor(255, 255, 255);
+        $pdf->SetFillColor(95, 70, 50);
+
+        foreach ($header as $label => $width) {
+            $pdf->Cell($width, 6, $label, 0, 0, 'L', true);
+        }
+        $pdf->Ln(6);
+
+        $pdf->SetFont('Helvetica', '', 9);
+        $pdf->SetTextColor(40, 40, 40);
+        $pdf->SetFillColor(255, 255, 255);
+
+        if ($exportCustomers === []) {
+            $pdf->Cell(0, 7, 'No customers match the selected filters.', 0, 1, 'L');
+        } else {
+            foreach ($exportCustomers as $customer) {
+                $info = statusInfo((string) ($customer['status'] ?? 'Unpaid'));
+
+                $pdf->Cell($header['Customer Name'], 6, truncateText((string) ($customer['customer_name'] ?? ''), 28), 0, 0, 'L');
+                $pdf->Cell($header['Money Owed'], 6, formatCustomerAmount((float) ($customer['amount_owed'] ?? 0)), 0, 0, 'L');
+                $pdf->Cell($header['Settlement Date'], 6, formatCustomerDate((string) ($customer['settlement_date'] ?? null)), 0, 0, 'L');
+                $pdf->Cell($header['Status'], 6, $info['label'], 0, 1, 'L');
+            }
+        }
+
+        $pdf->Output('D', 'customers-export-' . date('Y-m-d') . '.pdf');
+        exit;
+    } catch (Throwable $e) {
+        error_log('Customer export error: ' . $e->getMessage());
+        http_response_code(500);
+        exit('Unable to export customers at this time.');
+    }
+}
 
 try {
     $pdo = getPDO();
@@ -632,7 +783,7 @@ $activePage = 'customers';
             </div>
 
             <div class="actions-right-group">
-              <a href="customers.php?export=csv&search=<?= urlencode($search) ?>&status=<?= urlencode($filterStatus) ?>"
+              <a href="customers.php?export=pdf&search=<?= urlencode($search) ?>&status=<?= urlencode($filterStatus) ?>"
                  class="export-btn">
                 <i class="bi bi-file-earmark-arrow-down"></i>
                 Export list
