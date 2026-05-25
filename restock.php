@@ -1310,7 +1310,7 @@ $activePage = 'restock';
           <div class="eo-field-group">
             <div class="eo-label">Stock Quantity</div>
             <div class="eo-input-field">
-              <input type="number" id="eo-qty" name="stock_quantity" min="1" required/>
+              <input type="number" id="eo-qty" name="stock_quantity" min="0" required/>
                       
             </div>
           </div>
@@ -1319,7 +1319,7 @@ $activePage = 'restock';
             <div class="eo-input-field">
               <span class="eo-peso">₱</span>
               <input type="number" id="eo-cost" name="cost"
-                      step="0.01" min="1" required/>
+                      step="0.01" min="0" required/>
             </div>
           </div>
           <div class="eo-field-group">
@@ -1327,7 +1327,7 @@ $activePage = 'restock';
             <div class="eo-input-field">
               <span class="eo-peso">₱</span>
               <input type="number" id="eo-retail" name="selling_price"
-                     step="0.01" min="1" required/>
+                     step="0.01" min="0" required/>
             </div>
           </div>
         </div>

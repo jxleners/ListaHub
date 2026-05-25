@@ -521,7 +521,6 @@ $activePage = 'manage-products';
   <link rel="stylesheet" href="css/sidebar.css"/>
   <link rel="stylesheet" href="css/manage-products.css"/>
   <link rel="stylesheet" href="css/main-body.css"/>
-
   <style>
   /* ── CSS Variables (from global.css of the edit overlay design) ── */
   :root {
@@ -629,28 +628,28 @@ $activePage = 'manage-products';
   ══════════════════════════════════════════════════ */
   #add-product-overlay,
   #edit-product-overlay {
-    display: flex;
+    display: none;
     position: fixed;
     inset: 0;
     z-index: 1000;
-    background: rgba(255, 248, 235, 0.18);
-    backdrop-filter: blur(20px);
-    -webkit-backdrop-filter: blur(20px);
+    /* Frosted glass backdrop matching the design */
+    background: linear-gradient(
+      180deg,
+      rgba(235, 233, 225, 0.55),
+      rgba(169, 174, 181, 0.55)
+    );
+    backdrop-filter: blur(51px);
+    -webkit-backdrop-filter: blur(51px);
+    box-shadow: 0 11.4px 22.3px rgba(53, 106, 185, 0.09) inset,
+                0 -2px 1px rgba(151, 193, 255, 0.4) inset;
     align-items: center;
     justify-content: center;
     padding: 20px;
     overflow-y: auto;
-    opacity: 0;
-    visibility: hidden;
-    pointer-events: none;
-    transition: opacity 220ms ease, visibility 0s linear 220ms;
   }
   #add-product-overlay.is-open,
   #edit-product-overlay.is-open {
-    opacity: 1;
-    visibility: visible;
-    pointer-events: auto;
-    transition: opacity 220ms ease, visibility 0s linear 0s;
+    display: flex;
   }
 
   /* ══════════════════════════════════════════════════
@@ -672,61 +671,16 @@ $activePage = 'manage-products';
     border-radius: 15px;
     background: linear-gradient(
         146.01deg,
-        rgba(253, 253, 253, 0.72),
-        rgba(254, 246, 227, 0.66) 49.52%,
-        rgba(255, 244, 216, 0.66)
+        rgba(253, 253, 253, 0.58),
+        rgba(254, 246, 227, 0.49) 49.52%,
+        rgba(255, 244, 216, 0.6)
       ),
       linear-gradient(rgba(252, 248, 238, 0.2), rgba(252, 248, 238, 0.2));
-    border: 2px solid #2b2b2bc7;
+    border: 2px solid var(--text-brown);
     overflow: hidden;
     padding: 17px 15px;
     gap: 0;
-    opacity: 0;
-    transform: translateY(10px) scale(0.98);
-    transition: opacity 220ms cubic-bezier(.22, .61, .36, 1),
-                transform 220ms cubic-bezier(.22, .61, .36, 1);
-  }
-  #add-product-overlay.is-open .edit-modal-card,
-  #edit-product-overlay.is-open .edit-modal-card {
-    opacity: 1;
-    transform: translateY(0) scale(1);
-  }
-
-  #del-modal-overlay,
-  #img-preview-overlay {
-    display: flex;
-    position: fixed;
-    inset: 0;
-    z-index: 1100;
-    align-items: center;
-    justify-content: center;
-    padding: 20px;
-    background: rgba(48, 35, 21, 0.24);
-    backdrop-filter: blur(14px);
-    -webkit-backdrop-filter: blur(14px);
-    opacity: 0;
-    visibility: hidden;
-    pointer-events: none;
-    transition: opacity 220ms ease, visibility 0s linear 220ms;
-  }
-  #del-modal-overlay.is-open,
-  #img-preview-overlay.is-open {
-    opacity: 1;
-    visibility: visible;
-    pointer-events: auto;
-    transition: opacity 220ms ease, visibility 0s linear 0s;
-  }
-  #del-modal-box,
-  #img-preview-box {
-    opacity: 0;
-    transform: translateY(10px) scale(0.98);
-    transition: opacity 220ms cubic-bezier(.22, .61, .36, 1),
-                transform 220ms cubic-bezier(.22, .61, .36, 1);
-  }
-  #del-modal-overlay.is-open #del-modal-box,
-  #img-preview-overlay.is-open #img-preview-box {
-    opacity: 1;
-    transform: translateY(0) scale(1);
+    animation: modalIn 0.2s ease;
   }
 
   /* Header row */
@@ -1333,17 +1287,7 @@ $activePage = 'manage-products';
         
       </div>
 
-      <!-- Pagination -->
-      <div class="pagination">
-        <button class="btn-page" id="btn-prev" type="button">
-          <i class="bi bi-arrow-left"></i>
-          <span>Prev</span>
-        </button>
-        <button class="btn-page" id="btn-next" type="button">
-          <span>Next</span>
-          <i class="bi bi-arrow-right"></i>
-        </button>
-      </div>
+      
 
     </div><!-- /container2 -->
 
@@ -1455,14 +1399,14 @@ $activePage = 'manage-products';
             <div class="edit-label">Cost</div>
             <div class="edit-input-field">
               <span class="peso-sign">₱</span>
-              <input type="number" id="cost-price" name="cost"  step="0.01" min="1" required/>
+              <input type="number" id="cost-price" name="cost"  step="0.01" min="0" required/>
             </div>
           </div>
           <div class="edit-field-group">
             <div class="edit-label">Selling Price</div>
             <div class="edit-input-field">
               <span class="peso-sign">₱</span>
-              <input type="number" id="selling-price" name="selling_price"  step="0.01" min="1" required/>
+              <input type="number" id="selling-price" name="selling_price"  step="0.01" min="0" required/>
             </div>
           </div>
         </div>
@@ -1596,21 +1540,21 @@ $activePage = 'manage-products';
           <div class="edit-field-group">
             <div class="edit-label">Stock Quantity</div>
             <div class="edit-input-field">
-              <input type="number" id="edit-stock-qty" name="stock_quantity"  min="0"/>
+              <input type="number" id="edit-stock-qty" name="stock_quantity"  min="0" required/>
             </div>
           </div>
           <div class="edit-field-group">
             <div class="edit-label">Cost</div>
             <div class="edit-input-field">
               <span class="peso-sign">₱</span>
-              <input type="number" id="edit-cost-price" name="cost"  step="0.01" min="1"/>
+              <input type="number" id="edit-cost-price" name="cost"  step="0.01" min="0" required/>
             </div>
           </div>
           <div class="edit-field-group">
             <div class="edit-label">Selling Price</div>
             <div class="edit-input-field">
               <span class="peso-sign">₱</span>
-              <input type="number" id="edit-selling-price" name="selling_price"  step="0.01" min="1"/>
+              <input type="number" id="edit-selling-price" name="selling_price"  step="0.01" min="0" required/>
             </div>
           </div>
         </div>
