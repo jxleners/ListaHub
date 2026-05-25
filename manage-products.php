@@ -1952,7 +1952,21 @@ if (btnNext) btnNext.addEventListener('click', function() { currentPage++; rende
    Export
 ───────────────────────────────────────────────────────────── */
 function exportInventory() {
-  window.location.href = 'export_inventory.php';
+  var searchInput = document.querySelector('.toolbar-search-form input[name="search"]');
+  var categorySelect = document.querySelector('.toolbar-cat-form select[name="category_filter"]');
+  var params = new URLSearchParams();
+
+  if (searchInput && searchInput.value.trim()) {
+    params.set('search', searchInput.value.trim());
+  }
+
+  if (categorySelect && categorySelect.value) {
+    params.set('category_filter', categorySelect.value);
+  }
+
+  var url = 'export_inventory.php';
+  var query = params.toString();
+  window.location.href = query ? (url + '?' + query) : url;
 }
 
 var _pendingDeleteForm = null;
