@@ -1044,20 +1044,91 @@ $activePage = 'manage-products';
   gap: 18px;
   min-width: 0;
 }
-#del-modal-overlay {
-  position: fixed; inset: 0;
-  background: rgba(0,0,0,0.45);
-  display: flex; align-items: center; justify-content: center;
+#del-modal-overlay,
+#img-preview-overlay {
+  position: fixed;
+  inset: 0;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
   z-index: 9999;
+}
+#del-modal-overlay {
+  background: rgba(0,0,0,0.45);
+}
+#img-preview-overlay {
+  background: rgba(0,0,0,0.65);
+}
+#del-modal-overlay.is-open,
+#img-preview-overlay.is-open {
+  display: flex;
+}
+#del-modal-box,
+#img-preview-box {
+  box-shadow: 0 8px 32px rgba(0,0,0,0.18);
+  font-family: inherit;
 }
 #del-modal-box {
   background: #fff;
   border-radius: 12px;
   padding: 32px 28px 24px;
-  min-width: 300px; max-width: 420px;
+  min-width: 300px;
+  max-width: 420px;
   text-align: center;
-  box-shadow: 0 8px 32px rgba(0,0,0,0.18);
-  font-family: inherit;
+}
+#img-preview-box {
+  position: relative;
+  border-radius: 15px;
+  padding: 50px 20px 16px;
+  width: 360px;
+  max-width: 90vw;
+  text-align: center;
+  box-shadow: 0 12px 40px rgba(0,0,0,0.3);
+  background: linear-gradient(
+    146.01deg,
+    rgba(253, 253, 253, 0.98),
+    rgba(254, 246, 227, 0.98) 49.52%,
+    rgba(255, 244, 216, 0.98)
+  );
+  border: 1px solid #3e2c23;
+}
+#img-preview-box img {
+  width: 320px;
+  height: 320px;
+  max-width: 100%;
+  object-fit: cover;
+  border-radius: 10px;
+  border: 1px solid rgba(62, 44, 35, 0.2);
+  display: block;
+  margin: 0 auto;
+}
+#img-preview-name {
+  margin-top: 10px;
+  font-size: 14px;
+  font-weight: 600;
+  color: #3e2c23;
+  font-family: Inter, sans-serif;
+}
+#img-preview-close {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  background: rgba(112, 94, 87, 0.09);
+  border: 1px solid rgba(62, 44, 35, 0.2);
+  border-radius: 50%;
+  width: 30px;
+  height: 30px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  font-size: 14px;
+  color: #3e2c23;
+  transition: background 0.15s;
+}
+#img-preview-close:hover {
+  background: rgba(62, 44, 35, 0.14);
 }
 #del-modal-icon  { font-size: 2.4rem; margin-bottom: 8px; }
 #del-modal-title { font-size: 1.15rem; font-weight: 700; margin-bottom: 8px; color: #1a1a2e; }
@@ -1239,10 +1310,10 @@ $activePage = 'manage-products';
                             class="prod-thumb"
                             onclick="openImgPreview('<?= htmlspecialchars($p['image_url']) ?>', '<?= htmlspecialchars(addslashes($p['product_name'])) ?>')"
                             alt="<?= htmlspecialchars($p['product_name']) ?>"
-                            style="width:60px;height:60px;object-fit:cover;border-radius:6px;border:1px solid rgba(62,44,35,0.2);cursor:pointer;display:block;flex-shrink:0;"
+                            style="width:60px;height:60px;object-fit:cover;border-radius:6px;border:1px solid rgba(62,44,35,0.2);cursor:pointer;display:block;margin:0 auto;flex-shrink:0;"
                           />
                         <?php else: ?>
-                          <div class="prod-thumb-empty" style="width:60px;height:60px;border-radius:6px;border:1px dashed rgba(62,44,35,0.2);display:flex;align-items:center;justify-content:center;color:rgba(62,44,35,0.3);font-size:24px;flex-shrink:0;cursor:default;">
+                          <div class="prod-thumb-empty" style="width:60px;height:60px;border-radius:6px;border:1px dashed rgba(62,44,35,0.2);display:flex;align-items:center;justify-content:center;color:rgba(62,44,35,0.3);font-size:24px;flex-shrink:0;cursor:default;margin:0 auto;">
                               <i class="bi bi-image"></i>
                           </div>
                         <?php endif; ?> 
@@ -1266,13 +1337,14 @@ $activePage = 'manage-products';
                           <i class="bi bi-eye"></i>
                         </button>
 
-                        <form class="delete-form" method="post">
-                          <input type="hidden" name="action" value="delete"/>
-                          <input type="hidden" name="product_id" value="<?= (int)$p['product_id'] ?>"/>
-                          <button class="action-btn delete-btn" type="submit" title="Delete">
-                            <i class="bi bi-trash3"></i>
-                          </button>
-                        </form>
+                        <button
+                          class="action-btn delete-btn"
+                          type="button"
+                          title="Delete"
+                          onclick="deleteProduct(<?= (int)$p['product_id'] ?>)"
+                        >
+                          <i class="bi bi-trash3"></i>
+                        </button>
                       </div>
                     </div>
                     <div class="row-divider"></div>
@@ -1601,6 +1673,11 @@ $activePage = 'manage-products';
   </div>
 </div>
 
+<form method="post" id="delete-product-form" style="display:none;">
+  <input type="hidden" name="action" value="delete"/>
+  <input type="hidden" name="product_id" id="delete-product-id" value=""/>
+</form>
+
 <!-- Category autocomplete datalist (shared) -->
 <datalist id="cat-list">
   <?php foreach ($categories as $cat): ?>
@@ -1922,7 +1999,19 @@ function exportInventory() {
   window.location.href = query ? (url + '?' + query) : url;
 }
 
-var _pendingDeleteForm = null;
+function deleteProduct(productId) {
+  var delOverlay = document.getElementById('del-modal-overlay');
+  if (!delOverlay) return;
+
+  document.getElementById('delete-product-id').value = productId;
+  delOverlay.classList.add('is-open');
+  lockBody();
+
+  document.getElementById('del-modal-confirm-btn').onclick = function() {
+    cancelDelModal();
+    document.getElementById('delete-product-form').submit();
+  };
+}
 
 function cancelDelModal() {
   var overlay = document.getElementById('del-modal-overlay');
@@ -1930,26 +2019,7 @@ function cancelDelModal() {
     overlay.classList.remove('is-open');
   }
   unlockBody();
-  _pendingDeleteForm = null;
 }
-
-document.querySelectorAll('.delete-form').forEach(function(form) {
-  form.addEventListener('submit', function(e) {
-    e.preventDefault();
-    _pendingDeleteForm = form;
-    var overlay = document.getElementById('del-modal-overlay');
-    if (overlay) {
-      overlay.classList.add('is-open');
-      lockBody();
-    }
-    document.getElementById('del-modal-confirm-btn').onclick = function() {
-      cancelDelModal();
-      if (_pendingDeleteForm) {
-        _pendingDeleteForm.submit();
-      }
-    };
-  });
-});
 
 function openImgPreview(src, name) {
   var overlay = document.getElementById('img-preview-overlay');
