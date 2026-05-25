@@ -332,7 +332,6 @@ $activePage = 'customers';
     -webkit-backdrop-filter: blur(20.6px);
     gap: 0 !important;
     padding: 17px 15px !important;
-    animation: modalIn 0.2s ease;
   }
   .ec-header {
     display: flex;
@@ -889,6 +888,8 @@ $activePage = 'customers';
      ============================================================ -->
 <script>
   /* ── Modal helpers ── */
+  var MODAL_CLOSE_DELAY = 220;
+
   function setBodyLocked(locked) {
     document.body.style.overflow = locked ? 'hidden' : '';
   }
@@ -904,18 +905,17 @@ $activePage = 'customers';
     var overlay = document.getElementById(id);
     if (!overlay) return;
     overlay.classList.remove('active');
-    if (!document.querySelector('.modal-overlay.active')) {
-      setBodyLocked(false);
-    }
+    window.setTimeout(function() {
+      if (!document.querySelector('.modal-overlay.active')) {
+        setBodyLocked(false);
+      }
+    }, MODAL_CLOSE_DELAY);
   }
 
   document.querySelectorAll('.modal-overlay').forEach(function(overlay) {
     overlay.addEventListener('click', function(e) {
       if (e.target === overlay) {
-        overlay.classList.remove('active');
-        if (!document.querySelector('.modal-overlay.active')) {
-          setBodyLocked(false);
-        }
+        closeModal(overlay.id);
       }
     });
   });
@@ -924,10 +924,7 @@ $activePage = 'customers';
     if (e.key !== 'Escape') return;
     var activeOverlay = document.querySelector('.modal-overlay.active');
     if (!activeOverlay) return;
-    activeOverlay.classList.remove('active');
-    if (!document.querySelector('.modal-overlay.active')) {
-      setBodyLocked(false);
-    }
+    closeModal(activeOverlay.id);
   });
 
   var _currentBalance = 0;
