@@ -1637,7 +1637,7 @@ $activePage = 'manage-products';
   </div>
 </div>
 
-<div id="del-modal-overlay" style="display:none;" onclick="cancelDelModal()">
+<div id="del-modal-overlay" onclick="cancelDelModal()">
   <div id="del-modal-box" onclick="event.stopPropagation()">
     <div id="del-modal-icon">🗑️</div>
     <div id="del-modal-title">Delete Product</div>
@@ -1649,7 +1649,7 @@ $activePage = 'manage-products';
   </div>
 </div>
 
-<div id="img-preview-overlay" style="display:none;" onclick="closeImgPreview()">
+<div id="img-preview-overlay" onclick="closeImgPreview()">
   <div id="img-preview-box" onclick="event.stopPropagation()">
     <button id="img-preview-close" onclick="closeImgPreview()"><i class="bi bi-x-lg"></i></button>
     <img id="img-preview-src" src="" alt=""/>
@@ -1894,9 +1894,18 @@ function toggleExpiry(checkbox, inputId) {
 // ESC closes any open overlay
 document.addEventListener('keydown', function(e) {
   if (e.key === 'Escape') {
-    if (document.getElementById('img-preview-overlay').style.display === 'flex') closeImgPreview();
-    else if (editOverlay.classList.contains('is-open')) closeEditOverlay();
-    else if (addOverlay.classList.contains('is-open'))  closeAddOverlay();
+    var imgOverlay = document.getElementById('img-preview-overlay');
+    var delOverlay = document.getElementById('del-modal-overlay');
+
+    if (imgOverlay && imgOverlay.classList.contains('is-open')) {
+      closeImgPreview();
+    } else if (delOverlay && delOverlay.classList.contains('is-open')) {
+      cancelDelModal();
+    } else if (editOverlay.classList.contains('is-open')) {
+      closeEditOverlay();
+    } else if (addOverlay.classList.contains('is-open')) {
+      closeAddOverlay();
+    }
   }
 });
 
@@ -1972,7 +1981,11 @@ function exportInventory() {
 var _pendingDeleteForm = null;
 
 function cancelDelModal() {
-  document.getElementById('del-modal-overlay').style.display = 'none';
+  var overlay = document.getElementById('del-modal-overlay');
+  if (overlay) {
+    overlay.classList.remove('is-open');
+  }
+  unlockBody();
   _pendingDeleteForm = null;
 }
 
@@ -1980,10 +1993,16 @@ document.querySelectorAll('.delete-form').forEach(function(form) {
   form.addEventListener('submit', function(e) {
     e.preventDefault();
     _pendingDeleteForm = form;
-    document.getElementById('del-modal-overlay').style.display = 'flex';
+    var overlay = document.getElementById('del-modal-overlay');
+    if (overlay) {
+      overlay.classList.add('is-open');
+      lockBody();
+    }
     document.getElementById('del-modal-confirm-btn').onclick = function() {
-      document.getElementById('del-modal-overlay').style.display = 'none';
-      _pendingDeleteForm.submit();
+      cancelDelModal();
+      if (_pendingDeleteForm) {
+        _pendingDeleteForm.submit();
+      }
     };
   });
 });
@@ -1992,19 +2011,18 @@ function openImgPreview(src, name) {
   var overlay = document.getElementById('img-preview-overlay');
   document.getElementById('img-preview-src').src          = src;
   document.getElementById('img-preview-name').textContent = name;
-  overlay.style.display        = 'flex';
-  overlay.style.position       = 'fixed';
-  overlay.style.inset          = '0';
-  overlay.style.background     = 'rgba(0,0,0,0.65)';
-  overlay.style.alignItems     = 'center';
-  overlay.style.justifyContent = 'center';
-  overlay.style.zIndex         = '10000';
-  document.body.style.overflow = 'hidden';
+  if (overlay) {
+    overlay.classList.add('is-open');
+  }
+  lockBody();
 }
 
 function closeImgPreview() {
-  document.getElementById('img-preview-overlay').style.display = 'none';
-  document.body.style.overflow = '';
+  var overlay = document.getElementById('img-preview-overlay');
+  if (overlay) {
+    overlay.classList.remove('is-open');
+  }
+  unlockBody();
 }
 
 /* Init */
