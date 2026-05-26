@@ -169,7 +169,9 @@ $is_other = !in_array($current_store_type, $preset_types);
      ============================================================ -->
 <div id="profile-modal-overlay" style="
   display:none; position:fixed; inset:0; z-index:2000;
-  background:rgba(0,0,0,0.35);
+      background: rgba(48,35,21,0.24);
+    backdrop-filter: blur(14px);
+    -webkit-backdrop-filter: blur(14px);
   align-items:center; justify-content:center;">
 
   <div style="
