@@ -94,12 +94,6 @@ function resolveCategoryId(PDO $pdo, string $category_name): int {
 
 // ── Handle POST actions ──────────────────────────────────────
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    file_put_contents('C:/temp/restock-post-debug.txt',
-        "action=" . json_encode($_POST['action'] ?? null) . "\n" .
-        "files=" . json_encode($_FILES) . "\n" .
-        "raw=" . file_get_contents('php://input') . "\n\n",
-        FILE_APPEND
-    );
     $action = $_POST['action'] ?? '';
 
     // ── SINGLE RESTOCK (eye button form submit) ───────────────
@@ -400,9 +394,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $error = 'Database error: ' . $e->getMessage();
         }
     } elseif ($action === 'import_csv') {
-        file_put_contents('C:/temp/import-branch-debug.txt', "entered import_csv\n", FILE_APPEND);
         if (!isset($_FILES['csv_file']) || $_FILES['csv_file']['error'] !== UPLOAD_ERR_OK) {
-            file_put_contents('C:/temp/import-branch-debug.txt', "no file or upload error\n", FILE_APPEND);
             $error = 'Please select a valid CSV file to import.';
         } else {
             $tmpName = $_FILES['csv_file']['tmp_name'] ?? '';
@@ -576,7 +568,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
   }
 
-  file_put_contents('C:/temp/restock-state.txt', "message=" . json_encode($message) . "\nerror=" . json_encode($error) . "\n", FILE_APPEND);
 }
 
 // ── Fetch product list for display ──────────────────────────

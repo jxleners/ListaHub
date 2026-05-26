@@ -317,7 +317,7 @@ body {
     rgba(254, 246, 227, 0.6) 38.94%,
     rgba(255, 244, 216, 0.6)
   ); /* HARDCODED visible border — no variable */
-  border: 1px solid rgba(62, 44, 35, 0.3);
+  border: var(--border-2);
   box-shadow: 1px 2px 20px rgba(62, 44, 35, 0.12);
   padding: 18px 19px;
   display: flex;
