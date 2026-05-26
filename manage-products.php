@@ -633,9 +633,9 @@ $activePage = 'manage-products';
     inset: 0;
     z-index: 1000;
     /* Frosted glass backdrop matching the design */
-    background: rgba(255, 248, 235, 0.15);
-    backdrop-filter: blur(20px);
-    -webkit-backdrop-filter: blur(20px);
+    background: rgba(48,35,21,0.24);
+    backdrop-filter: blur(14px);
+    -webkit-backdrop-filter: blur(14px);
     box-shadow: 0 11.4px 22.3px rgba(53, 106, 185, 0.09) inset,
                 0 -2px 1px rgba(151, 193, 255, 0.4) inset;
     align-items: center;
@@ -674,9 +674,9 @@ $activePage = 'manage-products';
     border-radius: 15px;
     background: linear-gradient(
         146.01deg,
-        rgba(253, 253, 253, 0.58),
-        rgba(254, 246, 227, 0.49) 49.52%,
-        rgba(255, 244, 216, 0.6)
+        rgb(255, 246, 236),
+        rgb(254, 246, 227),
+        rgb(255, 244, 216)
       ),
       linear-gradient(rgba(252, 248, 238, 0.2), rgba(252, 248, 238, 0.2));
     border: 2px solid var(--text-brown);
@@ -757,7 +757,7 @@ $activePage = 'manage-products';
     gap: var(--gap-8);
     display: flex;
     flex-direction: column;
-    background: rgba(252, 248, 235, 0.85);
+    background: linear-gradient(180deg, rgba(255, 238, 227, 0.79), #fcf8ebeb);
     font-family: var(--font-inter);
     font-size: var(--fs-18);
     color: var(--color-gray-100);
@@ -1370,14 +1370,22 @@ $activePage = 'manage-products';
         
       </div>
 
-      <div class="pagination">
-          <button class="btn-page" id="btn-prev" type="button">
-            <i class="bi bi-arrow-left"></i><span>Prev</span>
-          </button>
-          <button class="btn-page" id="btn-next" type="button">
-            <span>Next</span><i class="bi bi-arrow-right"></i>
-          </button>
-        </div>
+      <div class="pagination buttons-parent">
+        <button class="btn-page" id="btn-prev" type="button">
+          <i class="bi bi-arrow-left"></i><span>Prev</span>
+        </button>
+
+        <span
+          id="pagination-info"
+          style="font-size: var(--fs-13); color: var(--text-brown); font-family: var(--font-inter); font-weight: 500;"
+        >
+          Page 1 of 1 (0 records)
+        </span>
+
+        <button class="btn-page" id="btn-next" type="button">
+          <span>Next</span><i class="bi bi-arrow-right"></i>
+        </button>
+      </div>
 
     </div><!-- /container2 -->
 
@@ -1972,29 +1980,48 @@ if (searchInput) {
 var currentPage   = 1;
 var ROWS_PER_PAGE = 10;
 
+function getVisibleRows() {
+  return Array.from(document.querySelectorAll('#inv-tbody .tbody-row'))
+    .filter(function(r) { return r.dataset.hidden !== '1'; });
+}
+
+function getMaxPage() {
+  var visible = getVisibleRows();
+  return Math.max(1, Math.ceil(visible.length / ROWS_PER_PAGE));
+}
+
+function goToPage(page) {
+  currentPage = Math.max(1, Math.min(getMaxPage(), page));
+  renderPage();
+}
+
 function renderPage() {
   var allRows = Array.from(document.querySelectorAll('#inv-tbody .tbody-row'));
-  var visible = allRows.filter(function(r) { return r.dataset.hidden !== '1'; });
+  var visible = getVisibleRows();
   var total   = visible.length;
-  var maxPage = Math.max(1, Math.ceil(total / ROWS_PER_PAGE));
+  var maxPage = getMaxPage();
   if (currentPage > maxPage) currentPage = maxPage;
 
   var start = (currentPage - 1) * ROWS_PER_PAGE;
   var end   = start + ROWS_PER_PAGE;
 
-  allRows.forEach(function(r)    { r.style.display = 'none'; });
+  allRows.forEach(function(r) { r.style.display = 'none'; });
   visible.forEach(function(r, i) { r.style.display = (i >= start && i < end) ? '' : 'none'; });
 
   var btnPrev = document.getElementById('btn-prev');
   var btnNext = document.getElementById('btn-next');
+  var pageInfo = document.getElementById('pagination-info');
   if (btnPrev) btnPrev.disabled = currentPage <= 1;
   if (btnNext) btnNext.disabled = currentPage >= maxPage;
+  if (pageInfo) {
+    pageInfo.textContent = 'Page ' + currentPage + ' of ' + maxPage + ' (' + total + ' record' + (total !== 1 ? 's' : '') + ')';
+  }
 }
 
 var btnPrev = document.getElementById('btn-prev');
 var btnNext = document.getElementById('btn-next');
-if (btnPrev) btnPrev.addEventListener('click', function() { if (currentPage > 1) { currentPage--; renderPage(); } });
-if (btnNext) btnNext.addEventListener('click', function() { currentPage++; renderPage(); });
+if (btnPrev) btnPrev.addEventListener('click', function() { goToPage(currentPage - 1); });
+if (btnNext) btnNext.addEventListener('click', function() { goToPage(currentPage + 1); });
 
 /* ─────────────────────────────────────────────────────────────
    Export
