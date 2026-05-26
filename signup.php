@@ -152,7 +152,7 @@ if (isset($_SESSION['user_id'])) {
                 aria-controls="terms-privacy"
                 aria-expanded="false"
               >
-                <b>Terms of Service &amp; Privacy Policy.</b>
+                <b> Terms of Service &amp; Privacy Policy.</b>
               </button>
             </p>
 

@@ -5,7 +5,7 @@
 body {
   /* TODO: Replace with your background image, same as dashboard.php:
      background-image: url('pics_icons/bg2_blank.png'); */
-  background-image: url("pics_icons/bg2_blank.png");
+  background-image: url("/ListaHub/pics_icons/bg2_blank.png");
   background-size: cover;
   background-repeat: no-repeat;
   background-position: top center;
@@ -464,6 +464,7 @@ table.customers-table tbody td.col-actions {
   font-family: var(--font-inter);
   color: var(--1-brown);
   transition: background 0.15s;
+  text-decoration: none;
 }
 .page-btn:hover {
   background: rgba(207, 204, 201, 0.3);

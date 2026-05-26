@@ -10,7 +10,7 @@
 ───────────────────────────────────────── */
 body {
   font-family: var(--font-inter);
-  background-image: url("pics_icons/bg2_blank.png");
+  background-image: url("/ListaHub/pics_icons/bg2_blank.png");
   background-size: cover;
   background-repeat: no-repeat;
   background-position: top center;
@@ -24,7 +24,8 @@ body {
 .page-wrapper {
   display: flex;
   align-items: flex-start;
-  min-height: 100vh;
+  height: 100vh;
+  overflow: hidden;
   padding: 10px;
   gap: 15px;
   box-sizing: border-box;

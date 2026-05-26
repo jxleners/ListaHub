@@ -1,7 +1,7 @@
 /* inv_history.css *//* ─────────────────────────────────────────
    Page shell
 ───────────────────────────────────────── */
-*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }body { font-family: var(--font-inter); background-image: url('pics_icons/bg2_blank.png'); background-size: cover; background-repeat: no-repeat; background-position: top center; background-color: #f5efe0; min-height: 100vh; }/* ─────────────────────────────────────────
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }body { font-family: var(--font-inter); background-image: url("/ListaHub/pics_icons/bg2_blank.png"); background-size: cover; background-repeat: no-repeat; background-position: top center; background-color: #f5efe0; min-height: 100vh; }/* ─────────────────────────────────────────
    Page wrapper (sidebar + main body)
 ───────────────────────────────────────── */
 .page-wrapper { display: flex; align-items: flex-start; min-height: 100vh; padding: 10px; gap: 15px; }/* ─────────────────────────────────────────

@@ -126,7 +126,7 @@ $activePage = 'pos';
                   <span class="col-stock"><b>Stock</b></span>
                   <span class="col-qty"><b>Add Qty</b></span>
                   <span class="col-price"><b>Price</b></span>
-                  <span class="col-actions"><b>Actions</b></span>
+                  
                 </div>
                 <div class="thead-divider"></div>
               </div>
@@ -153,9 +153,7 @@ $activePage = 'pos';
                         </div>
                       </div>
                       <span class="col-price col-price-val">₱ <?= number_format((float)$p['retail_price'], 2) ?></span>
-                      <div class="col-actions actions-cell">
-                        <button class="trash-btn" type="button"><i class="bi bi-trash3"></i></button>
-                      </div>
+                      
                     </div>
                     <div class="row-divider"></div>
                   </div>

@@ -388,6 +388,8 @@ try {
             vdd.customer_id,
             vdd.customer_name,
             vdd.contact_number,
+            vdd.address,
+            vdd.notes,
             vdd.created_at,
             vdd.debt_id           AS credit_id,
             vdd.remaining_balance AS amount_owed,

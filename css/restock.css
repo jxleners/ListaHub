@@ -13,7 +13,7 @@ body {
     --font-inter
   ); /* TODO: Replace url() with your background image path.
      e.g. background-image: url('pics_icons/bg2_blank.png'); */
-  background-image: url("pics_icons/bg2_blank.png");
+  background-image: url("/ListaHub/pics_icons/bg2_blank.png");
   background-size: cover;
   background-repeat: no-repeat;
   background-position: top center;
