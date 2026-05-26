@@ -19,11 +19,11 @@ function truncateText(string $value, int $limit): string
     }
 
     if (function_exists('mb_strlen') && mb_strlen($value) > $limit) {
-        return mb_substr($value, 0, max(0, $limit - 1)) . '…';
+        return mb_substr($value, 0, max(0, $limit - 1)) . '...';
     }
 
     if (strlen($value) > $limit) {
-        return substr($value, 0, max(0, $limit - 1)) . '…';
+        return substr($value, 0, max(0, $limit - 1)) . '...';
     }
 
     return $value;
@@ -31,17 +31,17 @@ function truncateText(string $value, int $limit): string
 
 function formatCustomerAmount(float $value): string
 {
-    return '₱ ' . number_format($value, 2);
+    return 'PHP ' . number_format($value, 2);
 }
 
 function formatCustomerDate(?string $value): string
 {
     if (empty($value)) {
-        return '—';
+        return '-';
     }
 
     $timestamp = strtotime($value);
-    return $timestamp ? date('m/d/Y', $timestamp) : '—';
+    return $timestamp ? date('m/d/Y', $timestamp) : '-';
 }
 
 $user_id = (int) $_SESSION['user_id'];
@@ -250,12 +250,12 @@ if ($exportRequested) {
 
         $pdf = new FPDF('P', 'mm', 'A4');
         $pdf->SetAutoPageBreak(true, 12);
-        $pdf->SetFont('Helvetica', 'B', 16);
+        $pdf->SetFont('Helvetica', 'B', 13);
         $pdf->SetTextColor(62, 44, 35);
         $pdf->Cell(0, 8, 'ListaHub Customers Export', 0, 1, 'L');
-        $pdf->SetFont('Helvetica', '', 10);
+        $pdf->SetFont('Helvetica', '', 8);
         $pdf->SetTextColor(60, 60, 60);
-        $pdf->Cell(0, 6, 'Generated on ' . date('F j, Y, g:i A'), 0, 1, 'L');
+        $pdf->Cell(0, 5, 'Generated on ' . date('F j, Y, g:i A'), 0, 1, 'L');
 
         $filtersLabel = 'All customers';
         $filterParts = [];
@@ -269,8 +269,8 @@ if ($exportRequested) {
             $filtersLabel = implode(' | ', $filterParts);
         }
 
-        $pdf->SetFont('Helvetica', '', 9);
-        $pdf->Cell(0, 5, 'Filters: ' . $filtersLabel, 0, 1, 'L');
+        $pdf->SetFont('Helvetica', '', 7.5);
+        $pdf->Cell(0, 4.5, 'Filters: ' . $filtersLabel, 0, 1, 'L');
         $pdf->Ln(2);
 
         $header = [
@@ -280,29 +280,29 @@ if ($exportRequested) {
             'Status' => 28,
         ];
 
-        $pdf->SetFont('Helvetica', 'B', 9);
-        $pdf->SetTextColor(255, 255, 255);
-        $pdf->SetFillColor(95, 70, 50);
+        $pdf->SetFont('Helvetica', 'B', 7);
+        $pdf->SetTextColor(62, 44, 35);
+        $pdf->SetFillColor(235, 214, 101);
 
         foreach ($header as $label => $width) {
-            $pdf->Cell($width, 6, $label, 0, 0, 'L', true);
+            $pdf->Cell($width, 5, $label, 0, 0, 'C', true);
         }
-        $pdf->Ln(6);
+        $pdf->Ln(5);
 
-        $pdf->SetFont('Helvetica', '', 9);
+        $pdf->SetFont('Helvetica', '', 7);
         $pdf->SetTextColor(40, 40, 40);
         $pdf->SetFillColor(255, 255, 255);
 
         if ($exportCustomers === []) {
-            $pdf->Cell(0, 7, 'No customers match the selected filters.', 0, 1, 'L');
+            $pdf->Cell(0, 6, 'No customers match the selected filters.', 0, 1, 'C');
         } else {
             foreach ($exportCustomers as $customer) {
                 $info = statusInfo((string) ($customer['status'] ?? 'Unpaid'));
 
-                $pdf->Cell($header['Customer Name'], 6, truncateText((string) ($customer['customer_name'] ?? ''), 28), 0, 0, 'L');
-                $pdf->Cell($header['Money Owed'], 6, formatCustomerAmount((float) ($customer['amount_owed'] ?? 0)), 0, 0, 'L');
-                $pdf->Cell($header['Settlement Date'], 6, formatCustomerDate((string) ($customer['settlement_date'] ?? null)), 0, 0, 'L');
-                $pdf->Cell($header['Status'], 6, $info['label'], 0, 1, 'L');
+                $pdf->Cell($header['Customer Name'], 5, truncateText((string) ($customer['customer_name'] ?? ''), 28), 0, 0, 'C');
+                $pdf->Cell($header['Money Owed'], 5, formatCustomerAmount((float) ($customer['amount_owed'] ?? 0)), 0, 0, 'C');
+                $pdf->Cell($header['Settlement Date'], 5, formatCustomerDate((string) ($customer['settlement_date'] ?? null)), 0, 0, 'C');
+                $pdf->Cell($header['Status'], 5, $info['label'], 0, 1, 'C');
             }
         }
 

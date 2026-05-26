@@ -151,10 +151,22 @@ class FPDF
 
         $x = $this->mm2pt($this->x);
         $y = $this->mm2pt($this->pdfY($this->y, $h));
+        $wPt = $this->mm2pt($w);
+        $textWidth = $this->getTextWidth($txt);
+        $textX = $x + 1.5;
+        $align = strtoupper((string) $align);
+
+        if ($align === 'C') {
+            $textX = $x + max(1.5, ($wPt - $textWidth) / 2);
+        } elseif ($align === 'R') {
+            $textX = $x + max(1.5, $wPt - $textWidth - 1.5);
+        }
+
         $text = $this->escapeText($txt);
         $color = $this->colorCmd($this->textColor);
+        $fontResource = strpos($this->fontStyle, 'B') !== false ? 'F2' : 'F1';
 
-        $this->pages[$this->page]['content'] .= sprintf("BT /F1 %.2F Tf %.2F %.2F Td %s (%s) Tj ET\n", $this->fontSize, $x + 1.5, $y + 2.5, $color, $text);
+        $this->pages[$this->page]['content'] .= sprintf("BT /%s %.2F Tf %.2F %.2F Td %s (%s) Tj ET\n", $fontResource, $this->fontSize, $textX, $y + 2.5, $color, $text);
 
         if ($ln === 1) {
             $this->x = $this->leftMargin;
@@ -235,6 +247,19 @@ class FPDF
         return sprintf('%.3F %.3F %.3F rg', $r / 255, $g / 255, $b / 255);
     }
 
+    protected function getTextWidth($text)
+    {
+        $text = (string) $text;
+        if (function_exists('iconv')) {
+            $converted = @iconv('UTF-8', 'windows-1252//IGNORE', $text);
+            if ($converted !== false) {
+                $text = $converted;
+            }
+        }
+
+        return strlen($text) * $this->fontSize * 0.48;
+    }
+
     protected function escapeText($text)
     {
         $text = (string) $text;
@@ -274,7 +299,7 @@ class FPDF
         $objects = [];
         $pageObjects = [];
         $contentObjects = [];
-        $objectNumber = 4;
+        $objectNumber = 5;
 
         foreach ($this->pages as $pageData) {
             $contentObj = $objectNumber++;
@@ -284,13 +309,14 @@ class FPDF
 
             $stream = $pageData['content'];
             $objects[$contentObj] = "<< /Length " . strlen($stream) . " >>\nstream\n" . $stream . "\nendstream";
-            $objects[$pageObj] = "<< /Type /Page /Parent 1 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 3 0 R >> >> /Contents $contentObj 0 R >>";
+            $objects[$pageObj] = "<< /Type /Page /Parent 1 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 3 0 R /F2 4 0 R >> >> /Contents $contentObj 0 R >>";
         }
 
         $kids = implode(' ', array_map(static fn($id) => "$id 0 R", $pageObjects));
         $objects[1] = "<< /Type /Pages /Kids [$kids] /Count " . count($this->pages) . " >>";
         $objects[2] = "<< /Type /Catalog /Pages 1 0 R >>";
         $objects[3] = "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>";
+        $objects[4] = "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold >>";
 
         $pdf = "%PDF-1.4\n";
         $offsets = [];
