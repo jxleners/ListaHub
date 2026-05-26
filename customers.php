@@ -72,28 +72,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $allowed = ['Unpaid', 'Partially Paid', 'Fully Paid'];
             if (!in_array($status, $allowed)) $status = 'Unpaid';
 
-            /* Combine address + phone into contact_number field (pipe-separated) */
-            if ($contact_address !== '' && $contact_number !== '') {
-                $combined_contact = $contact_address . ' || ' . $contact_number;
-            } elseif ($contact_address !== '') {
-                $combined_contact = $contact_address;
-            } else {
-                $combined_contact = $contact_number;
-            }
-
+            /* Update Customer with contact_number and address as separate columns (1NF) */
             if ($debt_id && $customer_id) {
                 $pdo->beginTransaction();
 
-                /* 1. Update Customer name & contact in correct table */
+                /* 1. Update Customer name, contact number, and address in separate columns */
                 $updCust = $pdo->prepare("
                     UPDATE Customer
                     SET customer_name  = :customer_name,
-                        contact_number = :contact_number
+                        contact_number = :contact_number,
+                        address        = :address
                     WHERE customer_id = :customer_id
                 ");
                 $updCust->execute([
                     ':customer_name'  => $customer_name,
-                    ':contact_number' => $combined_contact,
+                    ':contact_number' => $contact_number,
+                    ':address'        => $contact_address,
                     ':customer_id'    => $customer_id,
                 ]);
 
@@ -846,6 +840,7 @@ $activePage = 'customers';
                           <?= (int)   $row['customer_id']  ?>,
                           '<?= htmlspecialchars($row['customer_name'],               ENT_QUOTES) ?>',
                           '<?= htmlspecialchars($row['contact_number'] ?? '',        ENT_QUOTES) ?>',
+                          '<?= htmlspecialchars($row['address']        ?? '',        ENT_QUOTES) ?>',
                           <?= (float) $row['amount_owed']  ?>,
                           <?= (float) ($row['original_amount'] ?? $row['amount_owed']) ?>,
                           '<?= htmlspecialchars($row['settlement_date'] ?? '',       ENT_QUOTES) ?>',
@@ -927,14 +922,21 @@ $activePage = 'customers';
           </div>
         </div>
 
-        <!-- Contact Information -->
+        <!-- Address -->
         <div class="ec-field">
-          <label class="ec-label">Contact Information</label>
-          <div class="ec-input-wrap ec-textarea-wrap">
+          <label class="ec-label">Address</label>
+          <div class="ec-input-wrap">
             <input class="ec-input" type="text" name="contact_address" id="edit_contact_address"
-                   placeholder="Address" />
-            <input class="ec-input ec-input-border-top" type="text" name="contact_number" id="edit_contact_number"
-                   placeholder="Contact number" />
+                   placeholder="Enter address" />
+          </div>
+        </div>
+
+        <!-- Contact Number -->
+        <div class="ec-field">
+          <label class="ec-label">Contact Number</label>
+          <div class="ec-input-wrap">
+            <input class="ec-input" type="text" name="contact_number" id="edit_contact_number"
+                   placeholder="Enter contact number" />
           </div>
         </div>
 
@@ -1083,7 +1085,7 @@ $activePage = 'customers';
 
   /* ── Open Edit Customer Modal ── */
   function openEditModal(creditId, customerId, customerName, contactNumber,
-                         remainingBalance, originalAmount, settlementDate, status) {
+                         address, remainingBalance, originalAmount, settlementDate, status) {
 
     _currentBalance = remainingBalance;
     _originalAmount = originalAmount;
@@ -1092,10 +1094,9 @@ $activePage = 'customers';
     document.getElementById('edit_customer_id').value  = customerId;
     document.getElementById('edit_customer_name').value = customerName;
 
-    /* Split "address || phone" */
-    var parts = (contactNumber || '').split('||');
-    document.getElementById('edit_contact_address').value = parts[0] ? parts[0].trim() : '';
-    document.getElementById('edit_contact_number').value  = parts[1] ? parts[1].trim() : '';
+    /* Populate address and contact number directly from their own separate columns */
+    document.getElementById('edit_contact_address').value = address || '';
+    document.getElementById('edit_contact_number').value  = contactNumber || '';
 
     /* Remaining balance (read-only) */
     document.getElementById('edit_amount_owed').value = remainingBalance.toFixed(2);

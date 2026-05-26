@@ -220,6 +220,22 @@ CREATE TABLE Customer (
 ) ENGINE=InnoDB;
 
 -- ============================================================
+--  1NF MIGRATION: separate contact_number and address columns
+--  Run this block ONCE on an existing database to split the
+--  old combined "address || phone" value stored in contact_number
+--  into the proper separate columns.
+-- ============================================================
+-- ALTER TABLE Customer
+--     MODIFY COLUMN contact_number VARCHAR(20) NOT NULL DEFAULT '',
+--     MODIFY COLUMN address        TEXT        NOT NULL;
+--
+-- UPDATE Customer
+-- SET
+--     address        = TRIM(SUBSTRING_INDEX(contact_number, '||', 1)),
+--     contact_number = TRIM(SUBSTRING_INDEX(contact_number, '||', -1))
+-- WHERE contact_number LIKE '%||%';
+
+-- ============================================================
 --  Sale — BUG 3 FIX:
 --  payment_method ENUM now includes 'gcash' so G-Cash
 --  transactions are stored separately from plain 'cash'.
@@ -663,6 +679,8 @@ CREATE PROCEDURE sp_process_credit_sale(
     OUT p_debt_id        INT UNSIGNED,
     OUT p_message        VARCHAR(255)
 )
+-- p_contact_number = phone number only (e.g. "09171234567")
+-- p_address        = street/barangay address (stored in separate column)
 proc: BEGIN
     DECLARE v_count      INT DEFAULT 1;
     DECLARE v_index      INT DEFAULT 1;
@@ -689,7 +707,7 @@ proc: BEGIN
 
     START TRANSACTION;
 
-        -- Insert customer record
+        -- Insert customer record (1NF: contact_number and address are separate columns)
         INSERT INTO Customer (customer_name, contact_number, address, total_outstanding)
         VALUES (p_customer_name, p_contact_number, p_address, 0.00);
 

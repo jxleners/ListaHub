@@ -260,13 +260,18 @@ $activePage = 'pos';
       </div>
 
       <div class="cust-field">
-        <label class="cust-label" for="cust-address">Contact Information</label>
-        <div class="cust-input-wrap cust-contact-box">
-          <input class="cust-input cust-contact-line" id="cust-address"
+        <label class="cust-label" for="cust-address">Address</label>
+        <div class="cust-input-wrap">
+          <input class="cust-input" id="cust-address"
                  type="text" placeholder="Enter address here" autocomplete="off"/>
-          <div class="cust-contact-divider"></div>
-          <input class="cust-input cust-contact-line" id="cust-contact"
-                 type="text" placeholder="Enter contact no." autocomplete="off"/>
+        </div>
+      </div>
+
+      <div class="cust-field">
+        <label class="cust-label" for="cust-contact">Contact Number</label>
+        <div class="cust-input-wrap">
+          <input class="cust-input" id="cust-contact"
+                 type="text" placeholder="Enter contact number" autocomplete="off"/>
         </div>
       </div>
 
