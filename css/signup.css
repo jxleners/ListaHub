@@ -364,8 +364,9 @@
   font-size: 1.375rem;
   color: var(--text-brown);
   font-family: Inter;
-  background: rgba(26, 20, 15, 0.45);
-  backdrop-filter: blur(4px);
+  background: rgba(255, 248, 235, 0.15);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
   z-index: 9999;
 }
 .terms-privacy[hidden] {
