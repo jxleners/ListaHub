@@ -486,13 +486,9 @@ table.customers-table tbody td.col-actions {
   justify-content: center;
   padding: 20px;
   overflow-y: auto;
-  background: linear-gradient(
-    180deg,
-    rgba(235, 233, 225, 0.55),
-    rgba(169, 174, 181, 0.55)
-  );
-  backdrop-filter: blur(51px);
-  -webkit-backdrop-filter: blur(51px);
+  background: rgba(255, 248, 235, 0.15);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
   box-shadow:
     0 11.4px 22.3px rgba(53, 106, 185, 0.09) inset,
     0 -2px 1px rgba(151, 193, 255, 0.4) inset;

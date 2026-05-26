@@ -628,7 +628,7 @@ $activePage = 'manage-products';
   ══════════════════════════════════════════════════ */
   #add-product-overlay,
   #edit-product-overlay {
-    display: none;
+    display: flex;
     position: fixed;
     inset: 0;
     z-index: 1000;
@@ -642,11 +642,17 @@ $activePage = 'manage-products';
     justify-content: center;
     padding: 20px;
     overflow-y: auto;
+    opacity: 0;
+    visibility: hidden;
+    pointer-events: none;
     transition: opacity 220ms ease, visibility 0s linear 220ms;
   }
   #add-product-overlay.is-open,
   #edit-product-overlay.is-open {
-    display: flex;
+    opacity: 1;
+    visibility: visible;
+    pointer-events: auto;
+    transition: opacity 220ms ease, visibility 0s linear 0s;
   }
 
   /* ══════════════════════════════════════════════════
@@ -677,7 +683,15 @@ $activePage = 'manage-products';
     overflow: hidden;
     padding: 17px 15px;
     gap: 0;
-    animation: modalIn 0.2s ease;
+    opacity: 0;
+    transform: translateY(10px) scale(0.98);
+    transition: opacity 220ms cubic-bezier(.22, .61, .36, 1),
+                transform 220ms cubic-bezier(.22, .61, .36, 1);
+  }
+  #add-product-overlay.is-open .edit-modal-card,
+  #edit-product-overlay.is-open .edit-modal-card {
+    opacity: 1;
+    transform: translateY(0) scale(1);
   }
 
   /* Header row */
