@@ -621,12 +621,11 @@ $activePage = 'manage-products';
     border-color: rgba(62, 44, 35, 0.4);
     background: rgba(255, 255, 255, 0.15);
   }
-  .category-select-pill:focus { border-color: var(--text-brown); }
-
-  /* ══════════════════════════════════════════════════
-     OVERLAY BACKDROP (shared for both overlays)
-  ══════════════════════════════════════════════════ */
-  #add-product-overlay,
+  .category-select-pill:focus { 
+  border-color: var(--text-brown); 
+  }
+  
+#add-product-overlay,
   #edit-product-overlay {
     display: flex;
     position: fixed;
