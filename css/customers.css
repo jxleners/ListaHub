@@ -477,8 +477,8 @@ table.customers-table tbody td.col-actions {
   display: flex;
   align-items: center;
   gap: 6px;
-  background: rgba(252, 248, 238, 0.9);
-  border: 1px solid rgba(62, 44, 35, 0.2);
+  background: rgba(235, 214, 101, 0.66);
+  border: 1.5px solid var(--1-brown);
   border-radius: var(--br-10);
   padding: 8px 18px;
   cursor: pointer;
@@ -486,15 +486,22 @@ table.customers-table tbody td.col-actions {
   font-weight: 500;
   font-family: var(--font-inter);
   color: var(--1-brown);
-  transition: background 0.15s;
+  box-shadow: var(--shadow-inner);
+  transition: background 0.15s, opacity 0.15s, transform 0.15s;
   text-decoration: none;
 }
-.page-btn:hover {
-  background: rgba(207, 204, 201, 0.3);
+.page-btn:not(:disabled):hover {
+  background: rgba(235, 214, 101, 0.88);
+  transform: translateY(-1px);
 }
 .page-btn:disabled {
-  opacity: 0.38;
+  background: rgba(252, 248, 238, 0.42);
+  border-color: rgba(62, 44, 35, 0.16);
+  box-shadow: none;
+  color: rgba(62, 44, 35, 0.38);
+  opacity: 1;
   cursor: not-allowed;
+  pointer-events: none;
 }
 .page-btn i {
   font-size: 14px;
