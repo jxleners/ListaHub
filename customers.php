@@ -495,11 +495,15 @@ $activePage = 'customers';
   }
   .ec-title {
     margin: 0;
-    font-size: 28px;
-    font-weight: 800;
+    flex: 1;
+    font-size: 32px;
     letter-spacing: -0.04em;
-    color: #3e2c23;
-    font-family: Inter, sans-serif;
+    font-weight: 800;
+    font-family: var(--font-inter);
+    color: var(--text-brown);
+    min-width: 179px;
+    text-align: center;
+    padding-left: 44px; 
   }
   .ec-close-btn {
     background: transparent;

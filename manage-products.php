@@ -718,6 +718,8 @@ $activePage = 'manage-products';
     font-family: var(--font-inter);
     color: var(--text-brown);
     min-width: 179px;
+    text-align: center;
+    padding-left: 44px; 
   }
   .edit-modal-close-btn {
     cursor: pointer;
