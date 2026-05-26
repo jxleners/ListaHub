@@ -167,7 +167,7 @@ if (isset($_SESSION['user_id'])) {
         </form>
       </section>
 
-      <section class="terms-privacy" id="terms-privacy" hidden>
+      <section class="terms-privacy" id="terms-privacy" aria-hidden="true">
         <div class="terms-container">
           <div class="terms-title">
             <h3 class="terms-of-service">Terms of Service & Privacy Policy</h3>
@@ -324,12 +324,14 @@ if (isset($_SESSION['user_id'])) {
   const termsPopup = document.getElementById('terms-privacy');
 
   const openTermsPopup = () => {
-    termsPopup.hidden = false;
+    termsPopup.classList.add('is-open');
+    termsPopup.setAttribute('aria-hidden', 'false');
     termsLink.setAttribute('aria-expanded', 'true');
   };
 
   const closeTermsPopup = () => {
-    termsPopup.hidden = true;
+    termsPopup.classList.remove('is-open');
+    termsPopup.setAttribute('aria-hidden', 'true');
     termsLink.setAttribute('aria-expanded', 'false');
   };
 
@@ -346,7 +348,7 @@ if (isset($_SESSION['user_id'])) {
   });
 
   document.addEventListener('keydown', (event) => {
-    if (event.key === 'Escape' && !termsPopup.hidden) {
+    if (event.key === 'Escape' && termsPopup.classList.contains('is-open')) {
       closeTermsPopup();
     }
   });
