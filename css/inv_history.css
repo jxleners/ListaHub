@@ -406,7 +406,102 @@ body {
 }
 .btn-page i {
   font-size: 14px;
-} /* ─────────────────────────────────────────
+}
+
+/* ─────────────────────────────────────────
+   Inventory history entrance animations
+   Scoped to .main-body so the sidebar stays static.
+───────────────────────────────────────── */
+@keyframes invHistoryContentIn {
+  0% {
+    opacity: 0;
+    transform: translate3d(0, 24px, 0);
+  }
+  100% {
+    opacity: 1;
+    transform: translate3d(0, 0, 0);
+  }
+}
+
+@keyframes invHistorySoftIn {
+  0% {
+    opacity: 0;
+    transform: translate3d(0, 14px, 0);
+  }
+  100% {
+    opacity: 1;
+    transform: translate3d(0, 0, 0);
+  }
+}
+
+.main-body > .overview,
+.main-body > .content-container,
+.main-body > .buttons-parent {
+  opacity: 0;
+  transform: translate3d(0, 24px, 0);
+  animation: invHistoryContentIn 0.8s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+  will-change: transform, opacity;
+}
+
+.main-body > .overview {
+  animation-delay: 0.04s;
+}
+
+.main-body > .content-container {
+  animation-delay: 0.12s;
+}
+
+.main-body > .buttons-parent {
+  animation-delay: 0.2s;
+}
+
+.main-body .header-card,
+.main-body .table-view,
+.main-body .inv-table,
+.main-body .row,
+.main-body .btn-page {
+  opacity: 0;
+  transform: translate3d(0, 14px, 0);
+  animation: invHistorySoftIn 0.7s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+  will-change: transform, opacity;
+}
+
+.main-body .header-card {
+  animation-delay: 0.12s;
+}
+
+.main-body .table-view {
+  animation-delay: 0.18s;
+}
+
+.main-body .inv-table {
+  animation-delay: 0.22s;
+}
+
+.main-body .row {
+  animation-delay: 0.28s;
+}
+
+.main-body .btn-page {
+  animation-delay: 0.32s;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .main-body > .overview,
+  .main-body > .content-container,
+  .main-body > .buttons-parent,
+  .main-body .header-card,
+  .main-body .table-view,
+  .main-body .inv-table,
+  .main-body .row,
+  .main-body .btn-page {
+    animation: none;
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* ─────────────────────────────────────────
    Delete confirmation modal
 ───────────────────────────────────────── */
 .modal-overlay {

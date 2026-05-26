@@ -654,9 +654,6 @@ $activePage = 'manage-products';
     transition: opacity 220ms ease, visibility 0s linear 0s;
   }
 
-  /* ══════════════════════════════════════════════════
-     EDIT OVERLAY — modal card (matches the design CSS)
-  ══════════════════════════════════════════════════ */
   .edit-modal-card {
     box-sizing: border-box;
     display: flex;

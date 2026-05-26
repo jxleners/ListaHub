@@ -20,6 +20,17 @@ body {
   background-position: top center;
   background-color: #f5efe0;
   min-height: 100vh;
+}
+
+@keyframes dashboardFadeUp {
+  from {
+    opacity: 0;
+    transform: translateY(18px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 } /* ─────────────────────────────────────────
    Page wrapper (sidebar + main body)
 ───────────────────────────────────────── */
@@ -40,6 +51,27 @@ body {
   padding: 20px 10px 10px;
   overflow-y: auto;
   min-width: 0;
+}
+
+.overview-row,
+.middle-row,
+.customer-cards-row,
+.section-container {
+  animation: dashboardFadeUp 0.7s cubic-bezier(0.22, 1, 0.36, 1) both;
+  will-change: opacity, transform;
+}
+
+.overview-row,
+.section-container {
+  animation-delay: 0.02s;
+}
+
+.middle-row {
+  animation-delay: 0.08s;
+}
+
+.customer-cards-row {
+  animation-delay: 0.14s;
 } /* ─────────────────────────────────────────
    Section title
 ───────────────────────────────────────── */
@@ -460,6 +492,15 @@ body {
 } /* ─────────────────────────────────────────
    Responsive
 ───────────────────────────────────────── */
+@media (prefers-reduced-motion: reduce) {
+  .overview-row,
+  .middle-row,
+  .customer-cards-row {
+    animation: none !important;
+    transition: none !important;
+  }
+}
+
 @media screen and (max-width: 1050px) {
   .overview-row .section-container {
     min-width: 100%;

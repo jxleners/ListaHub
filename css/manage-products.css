@@ -602,7 +602,120 @@ body {
 }
 .btn-page i {
   font-size: 14px;
-} /* ═══════════════════════════════════════════════════════════════
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   MANAGE PRODUCTS ENTRANCE ANIMATIONS
+   Scoped to .main-body so the sidebar remains static.
+   ═══════════════════════════════════════════════════════════════ */
+@keyframes manageContentIn {
+  0% {
+    opacity: 0;
+    transform: translate3d(0, 24px, 0);
+  }
+  100% {
+    opacity: 1;
+    transform: translate3d(0, 0, 0);
+  }
+}
+
+@keyframes manageSoftIn {
+  0% {
+    opacity: 0;
+    transform: translate3d(0, 14px, 0);
+  }
+  100% {
+    opacity: 1;
+    transform: translate3d(0, 0, 0);
+  }
+}
+
+.main-body > .overview,
+.main-body > .container2,
+.main-body > .pagination {
+  opacity: 0;
+  transform: translate3d(0, 24px, 0);
+  animation: manageContentIn 0.8s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+  will-change: transform, opacity;
+}
+
+.main-body > .overview {
+  animation-delay: 0.04s;
+}
+
+.main-body > .container2 {
+  animation-delay: 0.12s;
+}
+
+.main-body > .pagination {
+  animation-delay: 0.2s;
+}
+
+.main-body .cards-container,
+.main-body .stat-card,
+.main-body .table-actions,
+.main-body .tbody-row-content,
+.main-body .searchbar,
+.main-body .action-btns {
+  opacity: 0;
+  transform: translate3d(0, 14px, 0);
+  animation: manageSoftIn 0.7s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+  will-change: transform, opacity;
+}
+
+.main-body .cards-container {
+  animation-delay: 0.1s;
+}
+
+.main-body .stat-card:nth-child(1) {
+  animation-delay: 0.12s;
+}
+
+.main-body .stat-card:nth-child(2) {
+  animation-delay: 0.16s;
+}
+
+.main-body .stat-card:nth-child(3) {
+  animation-delay: 0.2s;
+}
+
+.main-body .stat-card:nth-child(4) {
+  animation-delay: 0.24s;
+}
+
+.main-body .table-actions {
+  animation-delay: 0.18s;
+}
+
+.main-body .searchbar {
+  animation-delay: 0.2s;
+}
+
+.main-body .action-btns {
+  animation-delay: 0.24s;
+}
+
+.main-body .tbody-row-content {
+  animation-delay: 0.24s;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .main-body > .overview,
+  .main-body > .container2,
+  .main-body > .pagination,
+  .main-body .cards-container,
+  .main-body .stat-card,
+  .main-body .table-actions,
+  .main-body .tbody-row-content,
+  .main-body .searchbar,
+  .main-body .action-btns {
+    animation: none;
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════════
    ADD PRODUCT OVERLAY / MODAL
    (Do NOT change — preserved exactly as original)
    ═══════════════════════════════════════════════════════════════ */

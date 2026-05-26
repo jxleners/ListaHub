@@ -926,7 +926,114 @@ body {
 }
 .cust-btn-complete:hover {
   background-color: rgba(235, 214, 101, 0.96);
-} /* ─────────────────────────────────────────
+}
+
+/* ─────────────────────────────────────────
+   POS page entrance animations
+   Scoped only to .main-body so the sidebar stays static.
+───────────────────────────────────────── */
+@keyframes posContentIn {
+  0% {
+    opacity: 0;
+    transform: translate3d(0, 24px, 0);
+  }
+  100% {
+    opacity: 1;
+    transform: translate3d(0, 0, 0);
+  }
+}
+
+@keyframes posSoftIn {
+  0% {
+    opacity: 0;
+    transform: translate3d(0, 14px, 0);
+  }
+  100% {
+    opacity: 1;
+    transform: translate3d(0, 0, 0);
+  }
+}
+
+.main-body > .overview,
+.main-body > .co {
+  opacity: 0;
+  transform: translate3d(0, 24px, 0);
+  animation: posContentIn 0.8s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+  will-change: transform, opacity;
+}
+
+.main-body > .overview {
+  animation-delay: 0.04s;
+}
+
+.main-body > .co {
+  animation-delay: 0.12s;
+}
+
+.main-body .top-actions,
+.main-body .searchbar,
+.main-body .table-section,
+.main-body .pagination,
+.main-body .total-view,
+.main-body .subtotal-panel,
+.main-body .payment-box,
+.main-body .checkout-actions {
+  opacity: 0;
+  transform: translate3d(0, 14px, 0);
+  animation: posSoftIn 0.7s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+  will-change: transform, opacity;
+}
+
+.main-body .top-actions {
+  animation-delay: 0.14s;
+}
+
+.main-body .searchbar {
+  animation-delay: 0.18s;
+}
+
+.main-body .table-section {
+  animation-delay: 0.22s;
+}
+
+.main-body .pagination {
+  animation-delay: 0.28s;
+}
+
+.main-body .total-view {
+  animation-delay: 0.14s;
+}
+
+.main-body .subtotal-panel {
+  animation-delay: 0.2s;
+}
+
+.main-body .payment-box {
+  animation-delay: 0.26s;
+}
+
+.main-body .checkout-actions {
+  animation-delay: 0.32s;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .main-body > .overview,
+  .main-body > .co,
+  .main-body .top-actions,
+  .main-body .searchbar,
+  .main-body .table-section,
+  .main-body .pagination,
+  .main-body .total-view,
+  .main-body .subtotal-panel,
+  .main-body .payment-box,
+  .main-body .checkout-actions {
+    animation: none;
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* ─────────────────────────────────────────
    Responsive breakpoints
 ───────────────────────────────────────── */
 @media screen and (max-width: 1050px) {

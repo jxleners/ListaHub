@@ -686,3 +686,156 @@ body {
     flex-wrap: wrap;
   }
 }
+
+/* ─────────────────────────────────────────
+   Sales page entrance animations
+   Scoped to .main-body so the sidebar stays static.
+───────────────────────────────────────── */
+@keyframes salesContentIn {
+  0% {
+    opacity: 0;
+    transform: translate3d(0, 24px, 0);
+  }
+  100% {
+    opacity: 1;
+    transform: translate3d(0, 0, 0);
+  }
+}
+
+@keyframes salesSoftIn {
+  0% {
+    opacity: 0;
+    transform: translate3d(0, 14px, 0);
+  }
+  100% {
+    opacity: 1;
+    transform: translate3d(0, 0, 0);
+  }
+}
+
+.main-body > .overview,
+.main-body > .revenue-section {
+  opacity: 0;
+  transform: translate3d(0, 24px, 0);
+  animation: salesContentIn 0.8s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+  will-change: transform, opacity;
+}
+
+.main-body > .overview {
+  animation-delay: 0.04s;
+}
+
+.main-body > .revenue-section {
+  animation-delay: 0.12s;
+}
+
+.main-body .info-section,
+.main-body .cards-container,
+.main-body .cards-row,
+.main-body .stat-card,
+.main-body .status-panel,
+.main-body .status-cards-wrap,
+.main-body .status-row,
+.main-body .status-card,
+.main-body .revenue-cards,
+.main-body .chart-card,
+.main-body .goods-card,
+.main-body .goods-row,
+.main-body .goods-mini-card,
+.main-body .goods-bottom {
+  opacity: 0;
+  transform: translate3d(0, 14px, 0);
+  animation: salesSoftIn 0.7s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+  will-change: transform, opacity;
+}
+
+.main-body .info-section {
+  animation-delay: 0.1s;
+}
+
+.main-body .cards-container {
+  animation-delay: 0.12s;
+}
+
+.main-body .cards-row:nth-of-type(1) {
+  animation-delay: 0.14s;
+}
+
+.main-body .cards-row:nth-of-type(2) {
+  animation-delay: 0.18s;
+}
+
+.main-body .stat-card {
+  animation-delay: 0.2s;
+}
+
+.main-body .status-panel {
+  animation-delay: 0.16s;
+}
+
+.main-body .status-cards-wrap {
+  animation-delay: 0.2s;
+}
+
+.main-body .status-row:nth-of-type(1) {
+  animation-delay: 0.22s;
+}
+
+.main-body .status-row:nth-of-type(2) {
+  animation-delay: 0.26s;
+}
+
+.main-body .status-card {
+  animation-delay: 0.28s;
+}
+
+.main-body .revenue-cards {
+  animation-delay: 0.18s;
+}
+
+.main-body .chart-card {
+  animation-delay: 0.2s;
+}
+
+.main-body .goods-card {
+  animation-delay: 0.24s;
+}
+
+.main-body .goods-row:nth-of-type(1) {
+  animation-delay: 0.26s;
+}
+
+.main-body .goods-row:nth-of-type(2) {
+  animation-delay: 0.3s;
+}
+
+.main-body .goods-mini-card {
+  animation-delay: 0.32s;
+}
+
+.main-body .goods-bottom {
+  animation-delay: 0.34s;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .main-body > .overview,
+  .main-body > .revenue-section,
+  .main-body .info-section,
+  .main-body .cards-container,
+  .main-body .cards-row,
+  .main-body .stat-card,
+  .main-body .status-panel,
+  .main-body .status-cards-wrap,
+  .main-body .status-row,
+  .main-body .status-card,
+  .main-body .revenue-cards,
+  .main-body .chart-card,
+  .main-body .goods-card,
+  .main-body .goods-row,
+  .main-body .goods-mini-card,
+  .main-body .goods-bottom {
+    animation: none;
+    opacity: 1;
+    transform: none;
+  }
+}

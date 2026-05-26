@@ -655,3 +655,122 @@ table.customers-table tbody td.col-actions {
     flex-direction: column;
   }
 }
+
+/* ─────────────────────────────────────────
+   Customers page entrance animations
+   Scoped to .main-body so the sidebar stays static.
+───────────────────────────────────────── */
+@keyframes customersContentIn {
+  0% {
+    opacity: 0;
+    transform: translate3d(0, 24px, 0);
+  }
+  100% {
+    opacity: 1;
+    transform: translate3d(0, 0, 0);
+  }
+}
+
+@keyframes customersSoftIn {
+  0% {
+    opacity: 0;
+    transform: translate3d(0, 14px, 0);
+  }
+  100% {
+    opacity: 1;
+    transform: translate3d(0, 0, 0);
+  }
+}
+
+.main-body > .overview-section,
+.main-body > .table-container-wrap,
+.main-body > .pagination-area {
+  opacity: 0;
+  transform: translate3d(0, 24px, 0);
+  animation: customersContentIn 0.8s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+  will-change: transform, opacity;
+}
+
+.main-body > .overview-section {
+  animation-delay: 0.04s;
+}
+
+.main-body > .table-container-wrap {
+  animation-delay: 0.12s;
+}
+
+.main-body > .pagination-area {
+  animation-delay: 0.2s;
+}
+
+.main-body .cards-row,
+.main-body .summary-card,
+.main-body .table-actions-bar,
+.main-body .table-view-wrapper,
+.main-body .actions-top-row,
+.main-body .customers-table tbody tr,
+.main-body .actions-cell,
+.main-body .page-btn {
+  opacity: 0;
+  transform: translate3d(0, 14px, 0);
+  animation: customersSoftIn 0.7s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+  will-change: transform, opacity;
+}
+
+.main-body .cards-row {
+  animation-delay: 0.1s;
+}
+
+.main-body .summary-card:nth-child(1) {
+  animation-delay: 0.12s;
+}
+
+.main-body .summary-card:nth-child(2) {
+  animation-delay: 0.16s;
+}
+
+.main-body .summary-card:nth-child(3) {
+  animation-delay: 0.2s;
+}
+
+.main-body .table-actions-bar {
+  animation-delay: 0.18s;
+}
+
+.main-body .table-view-wrapper {
+  animation-delay: 0.24s;
+}
+
+.main-body .actions-top-row {
+  animation-delay: 0.26s;
+}
+
+.main-body .customers-table tbody tr {
+  animation-delay: 0.28s;
+}
+
+.main-body .actions-cell {
+  animation-delay: 0.32s;
+}
+
+.main-body .page-btn {
+  animation-delay: 0.34s;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .main-body > .overview-section,
+  .main-body > .table-container-wrap,
+  .main-body > .pagination-area,
+  .main-body .cards-row,
+  .main-body .summary-card,
+  .main-body .table-actions-bar,
+  .main-body .table-view-wrapper,
+  .main-body .actions-top-row,
+  .main-body .customers-table tbody tr,
+  .main-body .actions-cell,
+  .main-body .page-btn {
+    animation: none;
+    opacity: 1;
+    transform: none;
+  }
+}
