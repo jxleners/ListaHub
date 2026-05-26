@@ -628,28 +628,31 @@ $activePage = 'manage-products';
   ══════════════════════════════════════════════════ */
   #add-product-overlay,
   #edit-product-overlay {
-    display: none;
+    display: flex;
     position: fixed;
     inset: 0;
     z-index: 1000;
     /* Frosted glass backdrop matching the design */
-    background: linear-gradient(
-      180deg,
-      rgba(235, 233, 225, 0.55),
-      rgba(169, 174, 181, 0.55)
-    );
-    backdrop-filter: blur(51px);
-    -webkit-backdrop-filter: blur(51px);
+    background: rgba(255, 248, 235, 0.15);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
     box-shadow: 0 11.4px 22.3px rgba(53, 106, 185, 0.09) inset,
                 0 -2px 1px rgba(151, 193, 255, 0.4) inset;
     align-items: center;
     justify-content: center;
     padding: 20px;
     overflow-y: auto;
+    opacity: 0;
+    visibility: hidden;
+    pointer-events: none;
+    transition: opacity 220ms ease, visibility 0s linear 220ms;
   }
   #add-product-overlay.is-open,
   #edit-product-overlay.is-open {
-    display: flex;
+    opacity: 1;
+    visibility: visible;
+    pointer-events: auto;
+    transition: opacity 220ms ease, visibility 0s linear 0s;
   }
 
   /* ══════════════════════════════════════════════════
@@ -680,7 +683,15 @@ $activePage = 'manage-products';
     overflow: hidden;
     padding: 17px 15px;
     gap: 0;
-    animation: modalIn 0.2s ease;
+    opacity: 0;
+    transform: translateY(10px) scale(0.98);
+    transition: opacity 220ms cubic-bezier(.22, .61, .36, 1),
+                transform 220ms cubic-bezier(.22, .61, .36, 1);
+  }
+  #add-product-overlay.is-open .edit-modal-card,
+  #edit-product-overlay.is-open .edit-modal-card {
+    opacity: 1;
+    transform: translateY(0) scale(1);
   }
 
   /* Header row */

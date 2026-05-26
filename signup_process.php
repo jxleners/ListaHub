@@ -1,14 +1,4 @@
 <?php
-// ============================================================
-//  signup_process.php
-//  Requirements met:
-//   ✅ PDO prepared statements
-//   ✅ password_hash()
-//   ✅ Transaction (BEGIN / COMMIT / ROLLBACK)
-//   ✅ try-catch
-//   ✅ Centralized lhdb.php
-//  NOTE: New schema stores store_name directly in User table.
-// ============================================================
 
 error_reporting(E_ALL);
 ini_set('display_errors', 0);

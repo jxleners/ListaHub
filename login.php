@@ -1,14 +1,5 @@
 <?php
-// ============================================================
-//  login.php
-//  Requirements met:
-//   ✅ PDO prepared statements
-//   ✅ password_verify()
-//   ✅ try-catch
-//   ✅ Centralized lhdb.php
-//  NOTE: New schema uses User.password_hash (not .password)
-//        and store_name lives inside User (no stores table).
-// ============================================================
+
 
 error_reporting(E_ALL);
 ini_set('display_errors', 0);
