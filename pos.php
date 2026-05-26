@@ -271,7 +271,8 @@ $activePage = 'pos';
         <label class="cust-label" for="cust-contact">Contact Number</label>
         <div class="cust-input-wrap">
           <input class="cust-input" id="cust-contact"
-                 type="text" placeholder="Enter contact number" autocomplete="off"/>
+                 type="text" placeholder="Enter contact number" autocomplete="off"
+                 maxlength="11" inputmode="numeric"/>
         </div>
       </div>
 
@@ -614,6 +615,10 @@ document.getElementById('cust-btn-complete').addEventListener('click', function(
 
   if (!name || !address || !contact) {
     errEl.textContent = 'Customer Name, Address, and Contact Number are required.';
+    return;
+  }
+  if (!/^\d{11}$/.test(contact)) {
+    errEl.textContent = 'Contact Number must be exactly 11 digits (e.g. 09171234567).';
     return;
   }
   errEl.textContent = '';

@@ -72,8 +72,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $allowed = ['Unpaid', 'Partially Paid', 'Fully Paid'];
             if (!in_array($status, $allowed)) $status = 'Unpaid';
 
-            /* Update Customer with contact_number and address as separate columns (1NF) */
-            if ($debt_id && $customer_id) {
+            /* Validate contact number: must be exactly 11 digits */
+            if ($contact_number !== '' && !preg_match('/^\d{11}$/', $contact_number)) {
+
+                $error = 'Contact Number must be exactly 11 digits (e.g. 09171234567).';
+
+            } elseif ($debt_id && $customer_id) {
+
                 $pdo->beginTransaction();
 
                 /* 1. Update Customer name, contact number, and address in separate columns */
@@ -130,12 +135,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     }
 
                 } else {
-                    /* No payment — just update name/contact, status stays as-is in DB */
+                    /* No payment — just update name/contact/address */
                     $pdo->commit();
                     $message = 'Customer updated successfully.';
                 }
+
             }
-        }
 
         /* ── DELETE CUSTOMER ── */
         if ($action === 'delete') {
@@ -173,7 +178,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $message = 'Customer deleted.';
             }
         }
-
+      }
     } catch (PDOException $e) {
         if (isset($pdo) && $pdo->inTransaction()) $pdo->rollBack();
         error_log($e->getMessage());
@@ -936,7 +941,7 @@ $activePage = 'customers';
           <label class="ec-label">Contact Number</label>
           <div class="ec-input-wrap">
             <input class="ec-input" type="text" name="contact_number" id="edit_contact_number"
-                   placeholder="Enter contact number" />
+                   placeholder="Enter contact number" maxlength="11" inputmode="numeric"/>
           </div>
         </div>
 
@@ -1211,6 +1216,31 @@ $activePage = 'customers';
       timer = setTimeout(function() { searchInput.closest('form').submit(); }, 400);
     });
   })();
+
+  /* ── Edit form: validate contact number before submit ── */
+  document.getElementById('editCustomerForm').addEventListener('submit', function(e) {
+    var contact = document.getElementById('edit_contact_number').value.trim();
+    if (contact !== '' && !/^\d{11}$/.test(contact)) {
+      e.preventDefault();
+      var existing = document.querySelector('.ec-contact-error');
+      if (!existing) {
+        var err = document.createElement('p');
+        err.className = 'ec-contact-error';
+        err.style.cssText = 'color:#cc0000;font-size:13px;margin:2px 0 0;font-family:Inter,sans-serif;';
+        err.textContent = 'Contact Number must be exactly 11 digits (e.g. 09171234567).';
+        document.getElementById('edit_contact_number').closest('.ec-field').appendChild(err);
+      }
+      document.getElementById('edit_contact_number').focus();
+      return;
+    }
+    var existing = document.querySelector('.ec-contact-error');
+    if (existing) existing.remove();
+  });
+
+  document.getElementById('edit_contact_number').addEventListener('input', function() {
+    var existing = document.querySelector('.ec-contact-error');
+    if (existing) existing.remove();
+  });
 
   /* ── Auto-dismiss flash messages ── */
   setTimeout(function() {

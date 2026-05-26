@@ -134,6 +134,10 @@ if ($type === 'cash') {
         echo json_encode(['success' => false, 'message' => 'Kulang pa ang info ng customer.']);
         exit;
     }
+    if (!preg_match('/^\d{11}$/', $custContact)) {
+        echo json_encode(['success' => false, 'message' => 'Contact Number must be exactly 11 digits (e.g. 09171234567).']);
+        exit;
+    }
 
     try {
         $pdo = getPDO();
