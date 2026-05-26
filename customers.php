@@ -466,11 +466,11 @@ $activePage = 'customers';
     box-sizing: border-box;
     display: flex;
     flex-direction: column;
-    background: linear-gradient(
+        background: linear-gradient(
         146.01deg,
-        rgba(253, 253, 253, 0.58),
-        rgba(254, 246, 227, 0.49) 49.52%,
-        rgba(255, 244, 216, 0.6)
+        rgb(255, 246, 236),
+        rgb(254, 246, 227),
+        rgb(255, 244, 216)
       ),
       linear-gradient(rgba(252, 248, 238, 0.2), rgba(252, 248, 238, 0.2)) !important;
     border-radius: 15px !important;
@@ -520,7 +520,7 @@ $activePage = 'customers';
     background-size: cover;
     background-repeat: no-repeat;
     background-position: top;
-    background-color: rgba(253,243,219,0.25);
+    background: linear-gradient(180deg, rgba(255, 238, 227, 0.79), #fcf8ebeb);
     border-radius: 10px;
     padding: 14px;
     display: flex;
