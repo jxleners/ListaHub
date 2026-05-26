@@ -1359,7 +1359,14 @@ $activePage = 'manage-products';
         
       </div>
 
-      
+      <div class="pagination">
+          <button class="btn-page" id="btn-prev" type="button">
+            <i class="bi bi-arrow-left"></i><span>Prev</span>
+          </button>
+          <button class="btn-page" id="btn-next" type="button">
+            <span>Next</span><i class="bi bi-arrow-right"></i>
+          </button>
+        </div>
 
     </div><!-- /container2 -->
 
