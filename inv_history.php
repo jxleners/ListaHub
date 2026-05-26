@@ -1,16 +1,4 @@
 <?php
-// ============================================================
-//  inv_history.php
-//  Shows paginated inventory movement history from Inventory_Log
-//  joined with vw_inventory_movements view.
-//  Requirements met:
-//   ✅ SQL View (vw_inventory_movements) used
-//   ✅ PDO prepared statements
-//   ✅ try-catch
-//   ✅ Session-based auth guard
-//   ✅ Pagination (10 rows/page)
-//   ✅ Delete a log entry (POST action)
-// ============================================================
 
 session_start();
 if (!isset($_SESSION['user_id'])) {
