@@ -214,6 +214,7 @@ CREATE TABLE Customer (
     customer_name     VARCHAR(100)   NOT NULL,
     contact_number    VARCHAR(20)    NOT NULL,
     address           TEXT           NOT NULL,
+    notes             TEXT           NULL,       -- FIX: was missing; used by SP and customers.php
     total_outstanding DECIMAL(12,2)  NOT NULL DEFAULT 0.00,
     created_at        DATETIME       NOT NULL DEFAULT CURRENT_TIMESTAMP,
     CONSTRAINT chk_outstanding CHECK (total_outstanding >= 0)
@@ -514,6 +515,7 @@ BEGIN
     DECLARE v_remaining   DECIMAL(12,2);
     DECLARE v_customer_id INT UNSIGNED;
 
+    -- Deduct from debt balance
     UPDATE Debt
        SET remaining_balance = remaining_balance - NEW.amount_paid
      WHERE debt_id = NEW.debt_id;
@@ -522,6 +524,12 @@ BEGIN
       FROM Debt
      WHERE debt_id = NEW.debt_id;
 
+    -- Look up customer once, used in both branches
+    SELECT s.customer_id INTO v_customer_id
+      FROM Debt d
+      JOIN Sale s ON s.sale_id = d.sale_id
+     WHERE d.debt_id = NEW.debt_id;
+
     IF v_remaining <= 0 THEN
         UPDATE Debt
            SET status            = 'Fully Paid',
@@ -529,11 +537,7 @@ BEGIN
                settlement_date   = NEW.payment_date
          WHERE debt_id = NEW.debt_id;
 
-        SELECT s.customer_id INTO v_customer_id
-          FROM Debt d
-          JOIN Sale s ON s.sale_id = d.sale_id
-         WHERE d.debt_id = NEW.debt_id;
-
+        -- FIX: deduct from Customer.total_outstanding on full payment
         IF v_customer_id IS NOT NULL THEN
             UPDATE Customer
                SET total_outstanding = GREATEST(total_outstanding - NEW.amount_paid, 0)
@@ -543,6 +547,14 @@ BEGIN
         UPDATE Debt
            SET status = 'Partially Paid'
          WHERE debt_id = NEW.debt_id AND status = 'Unpaid';
+
+        -- FIX: also deduct on partial payment — previously omitted, so
+        -- partial payments never reduced the customer's outstanding balance.
+        IF v_customer_id IS NOT NULL THEN
+            UPDATE Customer
+               SET total_outstanding = GREATEST(total_outstanding - NEW.amount_paid, 0)
+             WHERE customer_id = v_customer_id;
+        END IF;
     END IF;
 END$$
 
@@ -672,6 +684,7 @@ CREATE PROCEDURE sp_process_credit_sale(
     IN  p_customer_name  VARCHAR(100),
     IN  p_contact_number VARCHAR(20),
     IN  p_address        TEXT,
+    IN  p_notes          TEXT,           -- FIX: was missing; process_sale.php passes this
     IN  p_product_ids    TEXT,
     IN  p_quantities     TEXT,
     OUT p_sale_id        INT UNSIGNED,
@@ -681,6 +694,7 @@ CREATE PROCEDURE sp_process_credit_sale(
 )
 -- p_contact_number = phone number only (e.g. "09171234567")
 -- p_address        = street/barangay address (stored in separate column)
+-- p_notes          = optional notes (nullable)
 proc: BEGIN
     DECLARE v_count      INT DEFAULT 1;
     DECLARE v_index      INT DEFAULT 1;
@@ -708,8 +722,8 @@ proc: BEGIN
     START TRANSACTION;
 
         -- Insert customer record (1NF: contact_number and address are separate columns)
-        INSERT INTO Customer (customer_name, contact_number, address, total_outstanding)
-        VALUES (p_customer_name, p_contact_number, p_address, 0.00);
+        INSERT INTO Customer (customer_name, contact_number, address, notes, total_outstanding)
+        VALUES (p_customer_name, p_contact_number, p_address, NULLIF(p_notes,''), 0.00);
 
         SET v_cust_id = LAST_INSERT_ID();
 
@@ -926,11 +940,47 @@ SELECT
     p.retail_price,
     p.cost_price,
     p.expiration_date,
+    -- Units sold: count ALL sales including Utang (inventory was deducted)
     COALESCE(SUM(si.quantity_sold), 0)                                  AS total_units_sold,
-    COALESCE(SUM(si.subtotal), 0)                                       AS total_revenue,
-    COALESCE(SUM(si.quantity_sold * si.unit_cost_at_sale), 0)           AS total_cogs,
-    COALESCE(SUM(si.subtotal - si.quantity_sold * si.unit_cost_at_sale), 0) AS gross_profit,
-    COUNT(DISTINCT si.sale_id)                                          AS number_of_transactions
+    -- Revenue: ONLY cash/gcash sales + actual Debt_Payments collected.
+    -- FIX: Utang sales excluded until the customer actually pays.
+    COALESCE(SUM(CASE WHEN s.payment_method IN ('cash','gcash')
+                       THEN si.subtotal ELSE 0 END), 0)
+    + COALESCE((
+        SELECT SUM(dp.amount_paid)
+        FROM Debt_Payment dp
+        JOIN Debt d2       ON d2.debt_id    = dp.debt_id
+        JOIN Sale s2       ON s2.sale_id    = d2.sale_id
+        JOIN Sale_Item si2 ON si2.sale_id   = s2.sale_id
+        WHERE si2.product_id = p.product_id
+      ), 0)                                                             AS total_revenue,
+    -- COGS: only for cash/gcash sales + proportional COGS on Debt_Payments
+    COALESCE(SUM(CASE WHEN s.payment_method IN ('cash','gcash')
+                       THEN si.quantity_sold * si.unit_cost_at_sale ELSE 0 END), 0)
+    + COALESCE((
+        SELECT SUM(dp.amount_paid / NULLIF(d2.original_amount, 0) * s2.total_cost)
+        FROM Debt_Payment dp
+        JOIN Debt d2       ON d2.debt_id    = dp.debt_id
+        JOIN Sale s2       ON s2.sale_id    = d2.sale_id
+        JOIN Sale_Item si2 ON si2.sale_id   = s2.sale_id
+        WHERE si2.product_id = p.product_id
+      ), 0)                                                             AS total_cogs,
+    -- Gross profit: realised revenue minus realised COGS
+    (
+      COALESCE(SUM(CASE WHEN s.payment_method IN ('cash','gcash')
+                         THEN si.subtotal - si.quantity_sold * si.unit_cost_at_sale
+                         ELSE 0 END), 0)
+      + COALESCE((
+          SELECT SUM(dp.amount_paid - (dp.amount_paid / NULLIF(d2.original_amount, 0) * s2.total_cost))
+          FROM Debt_Payment dp
+          JOIN Debt d2       ON d2.debt_id    = dp.debt_id
+          JOIN Sale s2       ON s2.sale_id    = d2.sale_id
+          JOIN Sale_Item si2 ON si2.sale_id   = s2.sale_id
+          WHERE si2.product_id = p.product_id
+        ), 0)
+    )                                                                   AS gross_profit,
+    COUNT(DISTINCT CASE WHEN s.payment_method IN ('cash','gcash')
+                         THEN si.sale_id END)                           AS number_of_transactions
 FROM Product p
 JOIN  User       u  ON u.user_id     = p.user_id
 LEFT JOIN Category   c  ON c.category_id = p.category_id
@@ -961,15 +1011,48 @@ GROUP BY el.user_id, u.store_name;
 --  Net profit view
 -- -----------------------------------------------------------
 CREATE OR REPLACE VIEW vw_net_profit_summary AS
+-- FIX: old JOIN "ON s.sale_id IS NOT NULL" was always true (cross-join = every
+--      user sees every sale). FIX: Utang/credit excluded from profit until paid.
 SELECT
     u.user_id,
     u.store_name,
-    COALESCE(SUM(s.profit), 0)                        AS gross_profit_from_sales,
-    COALESCE(el_agg.total_cost_lost, 0)               AS total_expired_cost_lost,
-    COALESCE(SUM(s.profit), 0)
-        - COALESCE(el_agg.total_cost_lost, 0)         AS net_profit
+    COALESCE((
+        SELECT SUM(s2.profit)
+        FROM Sale s2
+        JOIN Sale_Item si2 ON si2.sale_id    = s2.sale_id
+        JOIN Product   p2  ON p2.product_id  = si2.product_id
+        WHERE p2.user_id = u.user_id
+          AND s2.payment_method IN ('cash', 'gcash')
+    ), 0)
+    + COALESCE((
+        SELECT SUM(dp.amount_paid - (dp.amount_paid / NULLIF(d.original_amount,0) * s3.total_cost))
+        FROM Debt_Payment dp
+        JOIN Debt      d   ON d.debt_id     = dp.debt_id
+        JOIN Sale      s3  ON s3.sale_id    = d.sale_id
+        JOIN Sale_Item si3 ON si3.sale_id   = s3.sale_id
+        JOIN Product   p3  ON p3.product_id = si3.product_id
+        WHERE p3.user_id = u.user_id
+    ), 0)                                                          AS gross_profit_from_sales,
+    COALESCE(el_agg.total_cost_lost, 0)                           AS total_expired_cost_lost,
+    COALESCE((
+        SELECT SUM(s2.profit)
+        FROM Sale s2
+        JOIN Sale_Item si2 ON si2.sale_id    = s2.sale_id
+        JOIN Product   p2  ON p2.product_id  = si2.product_id
+        WHERE p2.user_id = u.user_id
+          AND s2.payment_method IN ('cash', 'gcash')
+    ), 0)
+    + COALESCE((
+        SELECT SUM(dp.amount_paid - (dp.amount_paid / NULLIF(d.original_amount,0) * s3.total_cost))
+        FROM Debt_Payment dp
+        JOIN Debt      d   ON d.debt_id     = dp.debt_id
+        JOIN Sale      s3  ON s3.sale_id    = d.sale_id
+        JOIN Sale_Item si3 ON si3.sale_id   = s3.sale_id
+        JOIN Product   p3  ON p3.product_id = si3.product_id
+        WHERE p3.user_id = u.user_id
+    ), 0)
+    - COALESCE(el_agg.total_cost_lost, 0)                         AS net_profit
 FROM User u
-LEFT JOIN Sale s ON s.sale_id IS NOT NULL
 LEFT JOIN (
     SELECT user_id, SUM(total_cost_lost) AS total_cost_lost
       FROM Expired_Loss_Log
@@ -990,6 +1073,7 @@ SELECT
     cu.customer_name,
     cu.contact_number,
     cu.address,
+    cu.notes,                                                            -- FIX: was missing
     cu.total_outstanding,
     cu.created_at,
     COUNT(DISTINCT d.debt_id)                                        AS total_credit_transactions,
@@ -1016,6 +1100,7 @@ SELECT
     cu.customer_name,
     cu.contact_number,
     cu.address,
+    cu.notes,                                                            -- FIX: was missing
     cu.created_at,
     d.debt_id,
     d.sale_id,

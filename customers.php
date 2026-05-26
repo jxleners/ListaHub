@@ -143,7 +143,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
 
         /* ── DELETE CUSTOMER ── */
-        if ($action === 'delete') {
+        } elseif ($action === 'delete') {
             $customer_id = (int) ($_POST['customer_id'] ?? 0);
 
             if ($customer_id) {
@@ -178,7 +178,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $message = 'Customer deleted.';
             }
         }
-      }
+      
     } catch (PDOException $e) {
         if (isset($pdo) && $pdo->inTransaction()) $pdo->rollBack();
         error_log($e->getMessage());
@@ -220,6 +220,8 @@ if ($exportRequested) {
                 vdd.customer_id,
                 vdd.customer_name,
                 vdd.contact_number,
+                vdd.address,
+                vdd.notes,
                 vdd.created_at,
                 vdd.debt_id           AS credit_id,
                 vdd.remaining_balance AS amount_owed,
@@ -846,6 +848,7 @@ $activePage = 'customers';
                           '<?= htmlspecialchars($row['customer_name'],               ENT_QUOTES) ?>',
                           '<?= htmlspecialchars($row['contact_number'] ?? '',        ENT_QUOTES) ?>',
                           '<?= htmlspecialchars($row['address']        ?? '',        ENT_QUOTES) ?>',
+                          '<?= htmlspecialchars($row['notes']          ?? '',        ENT_QUOTES) ?>',
                           <?= (float) $row['amount_owed']  ?>,
                           <?= (float) ($row['original_amount'] ?? $row['amount_owed']) ?>,
                           '<?= htmlspecialchars($row['settlement_date'] ?? '',       ENT_QUOTES) ?>',
@@ -1090,7 +1093,7 @@ $activePage = 'customers';
 
   /* ── Open Edit Customer Modal ── */
   function openEditModal(creditId, customerId, customerName, contactNumber,
-                         address, remainingBalance, originalAmount, settlementDate, status) {
+                         address, notes, remainingBalance, originalAmount, settlementDate, status) {
 
     _currentBalance = remainingBalance;
     _originalAmount = originalAmount;
@@ -1103,6 +1106,9 @@ $activePage = 'customers';
     document.getElementById('edit_contact_address').value = address || '';
     document.getElementById('edit_contact_number').value  = contactNumber || '';
 
+    /* Populate notes (nullable — blank if none) */
+    document.getElementById('edit_notes').value = notes || '';
+
     /* Remaining balance (read-only) */
     document.getElementById('edit_amount_owed').value = remainingBalance.toFixed(2);
 
@@ -1113,8 +1119,6 @@ $activePage = 'customers';
 
     /* Clear amount paid */
     document.getElementById('edit_amount_paid').value = '';
-
-    document.getElementById('edit_notes').value = '';
 
     /* Set initial auto status & settlement display */
     ecSetAutoStatus(remainingBalance, originalAmount, settlementDate);

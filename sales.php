@@ -32,36 +32,69 @@ try {
     $stats = $stmt->fetch(PDO::FETCH_ASSOC);
 
     // ── Today's revenue ───────────────────────────────────────────────
-    // Use a subquery to get user's sale_ids first, avoiding duplicate
-    // counting when a sale has multiple Sale_Item rows.
+    // EXCLUDE Utang/credit sales; add only Debt_Payments collected today.
     $todayStmt = $pdo->prepare(
-        "SELECT COALESCE(SUM(s.total_amount), 0) AS todays_revenue
-         FROM Sale s
-         WHERE DATE(s.sale_date) = CURDATE()
-           AND s.sale_id IN (
-               SELECT DISTINCT si.sale_id
-               FROM Sale_Item si
-               JOIN Product p ON p.product_id = si.product_id
-               WHERE p.user_id = :user_id
-           )"
+        "SELECT
+            COALESCE((
+                SELECT SUM(s.total_amount)
+                FROM Sale s
+                WHERE DATE(s.sale_date) = CURDATE()
+                  AND s.payment_method IN ('cash', 'gcash')
+                  AND s.sale_id IN (
+                      SELECT DISTINCT si.sale_id
+                      FROM Sale_Item si
+                      JOIN Product p ON p.product_id = si.product_id
+                      WHERE p.user_id = :user_id
+                  )
+            ), 0)
+            +
+            COALESCE((
+                SELECT SUM(dp.amount_paid)
+                FROM Debt_Payment dp
+                JOIN Debt d    ON d.debt_id   = dp.debt_id
+                JOIN Sale s    ON s.sale_id   = d.sale_id
+                JOIN Sale_Item si ON si.sale_id = s.sale_id
+                JOIN Product p ON p.product_id = si.product_id
+                WHERE DATE(dp.payment_date) = CURDATE()
+                  AND p.user_id = :user_id2
+            ), 0)
+            AS todays_revenue"
     );
-    $todayStmt->execute([':user_id' => $user_id]);
+    $todayStmt->execute([':user_id' => $user_id, ':user_id2' => $user_id]);
     $todayRow = $todayStmt->fetch(PDO::FETCH_ASSOC);
 
     // ── Sales this month ──────────────────────────────────────────────
+    // EXCLUDE Utang; add Debt_Payments collected this month.
     $monthStmt = $pdo->prepare(
-        "SELECT COALESCE(SUM(s.total_amount), 0) AS month_revenue
-         FROM Sale s
-         WHERE YEAR(s.sale_date)  = YEAR(CURDATE())
-           AND MONTH(s.sale_date) = MONTH(CURDATE())
-           AND s.sale_id IN (
-               SELECT DISTINCT si.sale_id
-               FROM Sale_Item si
-               JOIN Product p ON p.product_id = si.product_id
-               WHERE p.user_id = :user_id
-           )"
+        "SELECT
+            COALESCE((
+                SELECT SUM(s.total_amount)
+                FROM Sale s
+                WHERE YEAR(s.sale_date)  = YEAR(CURDATE())
+                  AND MONTH(s.sale_date) = MONTH(CURDATE())
+                  AND s.payment_method IN ('cash', 'gcash')
+                  AND s.sale_id IN (
+                      SELECT DISTINCT si.sale_id
+                      FROM Sale_Item si
+                      JOIN Product p ON p.product_id = si.product_id
+                      WHERE p.user_id = :user_id
+                  )
+            ), 0)
+            +
+            COALESCE((
+                SELECT SUM(dp.amount_paid)
+                FROM Debt_Payment dp
+                JOIN Debt d    ON d.debt_id   = dp.debt_id
+                JOIN Sale s    ON s.sale_id   = d.sale_id
+                JOIN Sale_Item si ON si.sale_id = s.sale_id
+                JOIN Product p ON p.product_id = si.product_id
+                WHERE YEAR(dp.payment_date)  = YEAR(CURDATE())
+                  AND MONTH(dp.payment_date) = MONTH(CURDATE())
+                  AND p.user_id = :user_id2
+            ), 0)
+            AS month_revenue"
     );
-    $monthStmt->execute([':user_id' => $user_id]);
+    $monthStmt->execute([':user_id' => $user_id, ':user_id2' => $user_id]);
     $monthRow = $monthStmt->fetch(PDO::FETCH_ASSOC);
 
     // ── Cash vs G-Cash revenue ────────────────────────────────────────
@@ -118,23 +151,40 @@ try {
     $itemsRow = $itemsStmt->fetch(PDO::FETCH_ASSOC);
 
     // ── Monthly revenue — last 6 months ──────────────────────────────
-    // Group by month on Sale directly; scope via subquery.
+    // EXCLUDE Utang/credit sales; add Debt_Payments collected per month.
     $monthlyStmt = $pdo->prepare(
-        "SELECT DATE_FORMAT(s.sale_date, '%b %Y') AS month_label,
-                DATE_FORMAT(s.sale_date, '%Y-%m')  AS sort_key,
-                SUM(s.total_amount)                AS monthly_total
-         FROM   Sale s
-         WHERE  s.sale_date >= DATE_SUB(NOW(), INTERVAL 6 MONTH)
-           AND  s.sale_id IN (
-               SELECT DISTINCT si.sale_id
-               FROM Sale_Item si
-               JOIN Product p ON p.product_id = si.product_id
-               WHERE p.user_id = :user_id
-           )
-         GROUP  BY DATE_FORMAT(s.sale_date, '%Y-%m')
-         ORDER  BY MIN(s.sale_date) ASC"
+        "SELECT month_label, sort_key, SUM(monthly_total) AS monthly_total
+         FROM (
+             SELECT DATE_FORMAT(s.sale_date, '%b %Y') AS month_label,
+                    DATE_FORMAT(s.sale_date, '%Y-%m')  AS sort_key,
+                    SUM(s.total_amount)                AS monthly_total
+             FROM   Sale s
+             WHERE  s.sale_date >= DATE_SUB(NOW(), INTERVAL 6 MONTH)
+               AND  s.payment_method IN ('cash','gcash')
+               AND  s.sale_id IN (
+                   SELECT DISTINCT si.sale_id
+                   FROM Sale_Item si
+                   JOIN Product p ON p.product_id = si.product_id
+                   WHERE p.user_id = :user_id
+               )
+             GROUP  BY DATE_FORMAT(s.sale_date, '%Y-%m')
+             UNION ALL
+             SELECT DATE_FORMAT(dp.payment_date, '%b %Y') AS month_label,
+                    DATE_FORMAT(dp.payment_date, '%Y-%m')  AS sort_key,
+                    SUM(dp.amount_paid)                    AS monthly_total
+             FROM Debt_Payment dp
+             JOIN Debt d    ON d.debt_id    = dp.debt_id
+             JOIN Sale s    ON s.sale_id    = d.sale_id
+             JOIN Sale_Item si ON si.sale_id = s.sale_id
+             JOIN Product p ON p.product_id = si.product_id
+             WHERE dp.payment_date >= DATE_SUB(NOW(), INTERVAL 6 MONTH)
+               AND p.user_id = :user_id2
+             GROUP  BY DATE_FORMAT(dp.payment_date, '%Y-%m')
+         ) combined
+         GROUP  BY month_label, sort_key
+         ORDER  BY sort_key ASC"
     );
-    $monthlyStmt->execute([':user_id' => $user_id]);
+    $monthlyStmt->execute([':user_id' => $user_id, ':user_id2' => $user_id]);
     $monthlyData = $monthlyStmt->fetchAll(PDO::FETCH_ASSOC);
 
 } catch (PDOException $e) {

@@ -127,7 +127,7 @@ if ($type === 'cash') {
     $custName    = trim($data['customer_name']    ?? '');
     $custContact = trim($data['customer_contact'] ?? '');
     $custAddress = trim($data['customer_address'] ?? '');
-    // notes is optional — SP doesn't use it but we log it
+    // notes is optional — saved to Customer.notes column (nullable)
     $custNotes   = trim($data['customer_notes']   ?? '');
 
     if (!$custName || !$custContact || !$custAddress) {
@@ -149,6 +149,7 @@ if ($type === 'cash') {
                 :customer_name,
                 :contact_number,
                 :address,
+                :notes,
                 :product_ids,
                 :quantities,
                 @p_sale_id,
@@ -163,6 +164,7 @@ $stmt->execute([
     ':customer_name'  => $custName,
     ':contact_number' => $custContact,
     ':address'        => $custAddress,
+    ':notes'          => $custNotes ?: null,
     ':product_ids'    => $productIdsStr,
     ':quantities'     => $quantitiesStr,
 ]);
