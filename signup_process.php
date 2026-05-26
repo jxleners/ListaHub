@@ -86,6 +86,7 @@ try {
     $_SESSION['username']   = $username;
     $_SESSION['email']      = $email;
     $_SESSION['store_name'] = $store_name;
+    $_SESSION['animate_sidebar_once'] = true;
 
     header("Location: dashboard.php");
     exit;

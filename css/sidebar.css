@@ -29,6 +29,11 @@
   left: 10px;
   bottom: 10px;
   z-index: 10;
+  opacity: 1;
+  transform: translate3d(0, 0, 0);
+}
+
+.sidebar.sidebar--enter {
   opacity: 0;
   transform: translate3d(-20px, 0, 0);
   animation: sidebarIn 0.7s cubic-bezier(0.22, 1, 0.36, 1) forwards;

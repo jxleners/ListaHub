@@ -4,6 +4,8 @@
 // Set $activePage before including:
 //   'dashboard' | 'pos' | 'manage-products' | 'restock' | 'inventory-history' | 'sales' | 'customers'
 $activePage = $activePage ?? '';
+$animateSidebar = !empty($_SESSION['animate_sidebar_once']);
+unset($_SESSION['animate_sidebar_once']);
 
 // Fetch current store_type if not in session
 if (empty($_SESSION['store_type']) && !empty($_SESSION['user_id'])) {
@@ -22,7 +24,7 @@ $current_store_type = $_SESSION['store_type'] ?? 'Sari-Sari Store';
 $preset_types = ['Sari-Sari Store', 'Mini Grocery', 'Convenience Store', 'General Merchandise'];
 $is_other = !in_array($current_store_type, $preset_types);
 ?>
-<aside class="sidebar">
+<aside class="sidebar<?= $animateSidebar ? ' sidebar--enter' : '' ?>">
 
   <!-- ===== LOGO ===== -->
   <section class="logos">
