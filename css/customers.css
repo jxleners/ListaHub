@@ -242,22 +242,45 @@ body {
   opacity: 0.45;
 } /* Category filter select */
 .category-btn {
-  display: flex;
-  align-items: center;
-  gap: 10px;
   height: 37px;
   border-radius: var(--br-10);
-  border: var(--border-1);
-  padding: 8px 16px;
-  background: transparent;
+  border: 1.5px solid var(--1-brown);
+  padding: 0 38px 0 16px;
+  background:
+    linear-gradient(45deg, transparent 50%, var(--1-brown) 50%) right 18px
+      center / 6px 6px no-repeat,
+    linear-gradient(135deg, var(--1-brown) 50%, transparent 50%) right 12px
+      center / 6px 6px no-repeat;
   cursor: pointer;
   font-family: var(--font-inter);
-  font-size: 16px;
-  font-weight: 500;
-  letter-spacing: -0.04em;
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: 0;
   color: var(--1-brown);
   flex-shrink: 0;
-  appearance: auto;
+  appearance: none;
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  min-width: 150px;
+  outline: none;
+  transition:
+    border-color 0.15s,
+    background-color 0.15s,
+    box-shadow 0.15s;
+}
+.category-btn:hover {
+  background-color: #fff5d9;
+  border-color: var(--1-brown);
+}
+.category-btn:focus {
+  box-shadow:
+    0 0 0 3px rgba(235, 214, 101, 0.35),
+    var(--shadow-inner);
+}
+.category-btn option {
+  background: var(--yellow-white-1);
+  color: var(--1-brown);
+  font-weight: 500;
 } /* Right-side button group */
 .actions-right-group {
   display: flex;

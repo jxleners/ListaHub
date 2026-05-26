@@ -596,7 +596,7 @@ $activePage = 'manage-products';
     font-family: var(--font-inter);
   }
 
-  /* Category dropdown — clean native select */
+  /* Category dropdown — styled native select */
   .toolbar-cat-form {
     display: flex;
     align-items: center;
@@ -605,24 +605,35 @@ $activePage = 'manage-products';
   .category-select-pill {
     height: 37px;
     border-radius: var(--br-10);
-    border: 1px solid rgba(62, 44, 35, 0.2);
-    background: transparent;
-    padding: 0 14px;
+    border: 1.5px solid rgba(62, 44, 35, 0.45);
+    background:
+      linear-gradient(45deg, transparent 50%, var(--text-brown) 50%) right 18px center / 6px 6px no-repeat,
+      linear-gradient(135deg, var(--text-brown) 50%, transparent 50%) right 12px center / 6px 6px no-repeat;
+    padding: 0 38px 0 16px;
     font-family: var(--font-inter);
     font-size: 14px;
-    font-weight: 500;
+    font-weight: 600;
     color: var(--text-brown);
     cursor: pointer;
-    appearance: auto;
+    appearance: none;
+    -webkit-appearance: none;
+    -moz-appearance: none;
     outline: none;
-    transition: border-color 0.15s, background 0.15s;
+    min-width: 158px;
+    transition: border-color 0.15s, background-color 0.15s, box-shadow 0.15s;
   }
   .category-select-pill:hover {
-    border-color: rgba(62, 44, 35, 0.4);
-    background: rgba(255, 255, 255, 0.15);
+    border-color: var(--text-brown);
+    background-color: #fff5d9;
   }
   .category-select-pill:focus { 
-  border-color: var(--text-brown); 
+    border-color: var(--text-brown);
+    box-shadow: 0 0 0 3px rgba(235, 214, 101, 0.35), var(--shadow-inner, inset 0 1px 2px rgba(62, 44, 35, 0.08));
+  }
+  .category-select-pill option {
+    background: #fcf8ee;
+    color: var(--text-brown);
+    font-weight: 500;
   }
   
 #add-product-overlay,

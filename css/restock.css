@@ -303,6 +303,14 @@ body {
 } /* ─────────────────────────────────────────
    Table Wrapper
 ───────────────────────────────────────── */
+.csv-import-form {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  opacity: 0;
+  pointer-events: none;
+}
 .table-wrapper {
   border-radius: var(--br-10);
   background-color: var(--yellow-white-1);
