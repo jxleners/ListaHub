@@ -94,14 +94,7 @@ function resolveCategoryId(PDO $pdo, string $category_name): int {
 
 // ── Handle POST actions ──────────────────────────────────────
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    file_put_contents('C:/temp/restock-post-debug.txt',
-        "action=" . json_encode($_POST['action'] ?? null) . "\n" .
-        "files=" . json_encode($_FILES) . "\n" .
-        "raw=" . file_get_contents('php://input') . "\n\n",
-        FILE_APPEND
-    );
     $action = $_POST['action'] ?? '';
-    file_put_contents('C:/temp/action-debug.txt', 'action=' . json_encode($action) . "\n", FILE_APPEND);
 
     // ── SINGLE RESTOCK (eye button form submit) ───────────────
     if ($action === 'restock') {
@@ -401,9 +394,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $error = 'Database error: ' . $e->getMessage();
         }
     } elseif ($action === 'import_csv') {
-        file_put_contents('C:/temp/import-branch-debug.txt', "entered import_csv\n", FILE_APPEND);
         if (!isset($_FILES['csv_file']) || $_FILES['csv_file']['error'] !== UPLOAD_ERR_OK) {
-            file_put_contents('C:/temp/import-branch-debug.txt', "no file or upload error\n", FILE_APPEND);
             $error = 'Please select a valid CSV file to import.';
         } else {
             $tmpName = $_FILES['csv_file']['tmp_name'] ?? '';
@@ -577,7 +568,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
   }
 
-  file_put_contents('C:/temp/restock-state.txt', "message=" . json_encode($message) . "\nerror=" . json_encode($error) . "\n", FILE_APPEND);
 }
 
 // ── Fetch product list for display ──────────────────────────
@@ -801,11 +791,13 @@ $activePage = 'restock';
     backdrop-filter: blur(20.6px);
     -webkit-backdrop-filter: blur(20.6px);
     border-radius: 15px;
-    background: linear-gradient(146.01deg,
-        rgba(253,253,253,0.58),
-        rgba(254,246,227,0.49) 49.52%,
-        rgba(255,244,216,0.6)),
-      linear-gradient(rgba(252,248,238,0.2), rgba(252,248,238,0.2));
+    background: linear-gradient(
+        146.01deg,
+        rgb(255, 246, 236),
+        rgb(254, 246, 227),
+        rgb(255, 244, 216)
+      ),
+      linear-gradient(rgba(252, 248, 238, 0.2), rgba(252, 248, 238, 0.2));
     border: 2px solid var(--text-brown);
     overflow: hidden;
     padding: 17px 15px;
@@ -880,7 +872,7 @@ $activePage = 'restock';
     display: flex;
     flex-direction: column;
     gap: var(--gap-8);
-    background: rgba(252,248,235,0.92);
+    background: linear-gradient(180deg, rgba(255, 238, 227, 0.79), #fcf8ebeb);
     font-family: var(--font-inter);
     font-size: var(--fs-18);
     color: var(--color-gray-100);
@@ -1127,9 +1119,9 @@ $activePage = 'restock';
     transition: opacity 220ms ease, visibility 0s linear 0s;
   }
   #edit-product-overlay {
-    background: rgba(255,248,235,0.15);
-    backdrop-filter: blur(20px);
-    -webkit-backdrop-filter: blur(20px);
+    background: rgba(48,35,21,0.24);
+    backdrop-filter: blur(14px);
+    -webkit-backdrop-filter: blur(14px);
   }
   #del-modal-overlay,
   #csv-import-overlay {
@@ -1369,36 +1361,15 @@ $activePage = 'restock';
                class="tab-btn <?= $tab === 'expired' ? 'active' : '' ?>">Expired</a>
             <a href="restock.php?tab=near<?= !empty($search) ? '&search='.urlencode($search) : '' ?>&page=1"
                class="tab-btn <?= $tab === 'near'    ? 'active' : '' ?>">Near Expiry</a>
+          </div>
 
-            <button type="button" class="btn-import" onclick="showCsvImportPrompt()">
+          <button type="button" class="btn-import" onclick="showCsvImportPrompt()">
               <i class="bi bi-upload"></i> Import CSV
             </button>
             <form id="csv-import-form" method="post" enctype="multipart/form-data" style="display:none;">
               <input type="hidden" name="action" value="import_csv"/>
               <input type="file" id="csv-upload" name="csv_file" accept=".csv" onchange="handleCsvImport(this)"/>
             </form>
-          </div>
-          <!-- Pagination Row -->
-          <div class="pagination-row">
-            <?php if ($current_page > 1): ?>
-              <a href="<?= htmlspecialchars(pageUrl($current_page - 1, $tab, $search)) ?>" class="btn-page">
-                <i class="bi bi-arrow-left"></i> Prev
-              </a>
-            <?php else: ?>
-              <button class="btn-page" disabled >
-                <i class="bi bi-arrow-left"></i> Prev
-              </button>
-            <?php endif; ?>
-        <?php if ($current_page < $total_pages): ?>
-              <a href="<?= htmlspecialchars(pageUrl($current_page + 1, $tab, $search)) ?>" class="btn-page">
-                Next <i class="bi bi-arrow-right"></i>
-              </a>
-            <?php else: ?>
-              <button class="btn-page" disabled>
-                Next <i class="bi bi-arrow-right"></i>
-              </button>
-            <?php endif; ?>
-            </div>
         </div>
         
       </div>
@@ -1548,7 +1519,30 @@ $activePage = 'restock';
         </div>
       </div>
                         
+        <div class="pagination-row buttons-parent">
+          <button
+            class="btn-page"
+            type="button"
+            onclick="goToPage(<?= max(1, $current_page - 1) ?>)"
+            <?= ($current_page <= 1) ? 'disabled' : '' ?>
+          >
+            <i class="bi bi-arrow-left"></i> Prev
+          </button>
 
+          <span style="font-size: var(--fs-13); color: var(--text-brown); font-family: var(--font-inter); font-weight: 500;">
+            Page <?= $current_page ?> of <?= $total_pages ?>
+            (<?= $total_rows ?> record<?= $total_rows !== 1 ? 's' : '' ?>)
+          </span>
+
+          <button
+            class="btn-page"
+            type="button"
+            onclick="goToPage(<?= min($total_pages, $current_page + 1) ?>)"
+            <?= ($current_page >= $total_pages) ? 'disabled' : '' ?>
+          >
+            Next <i class="bi bi-arrow-right"></i>
+          </button>
+        </div>
         <!-- Bottom Actions -->
         <div class="bottom-actions">
           <button type="button" class="btn-cancel" onclick="window.location.href='restock.php'">Cancel</button>
@@ -1701,6 +1695,20 @@ $activePage = 'restock';
 
 /* ── Product data from PHP ───────────────────────────────── */
 var productsData = <?= $productsDataJson ?>;
+
+/* ── Pagination ───────────────────────────────────────────── */
+var restockPaginationState = {
+  tab: <?= json_encode($tab) ?>,
+  search: <?= json_encode($search) ?>
+};
+
+function goToPage(page) {
+  var params = new URLSearchParams();
+  if (restockPaginationState.tab) params.set('tab', restockPaginationState.tab);
+  if (restockPaginationState.search) params.set('search', restockPaginationState.search);
+  params.set('page', page);
+  window.location.href = 'restock.php?' + params.toString();
+}
 
 /* ── Edit Overlay ────────────────────────────────────────── */
 var editOverlay = document.getElementById('edit-product-overlay');
