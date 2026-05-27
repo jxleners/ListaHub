@@ -23,12 +23,18 @@ $error   = '';
 
 function normalizeCsvHeader(string $header): string {
     $header = trim($header);
-    return preg_replace('/^\xEF\xBB\xBF/', '', $header);
+    $header = preg_replace('/^\xEF\xBB\xBF/', '', $header);
+    $header = strtolower($header);
+    $header = trim($header, ' "\'');
+    $header = preg_replace('/[\s\-]+/', '_', $header);
+    return $header;
 }
 
 function parseExpiryDate(?string $value): ?string {
     $value = trim((string) ($value ?? ''));
-    if ($value === '') {
+    // Treat empty string, 'NULL', 'null', 'N/A', 'none', '-' all as no expiry date
+    if ($value === '' || strtoupper($value) === 'NULL' || strtolower($value) === 'n/a'
+        || strtolower($value) === 'none' || $value === '-') {
         return null;
     }
 
@@ -375,66 +381,94 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $inserted = 0;
                 $updated  = 0;
                 $skipped  = 0;
+                $rowNumber = 1;
 
                 try {
+                    // Auto-detect delimiter: peek at first line to decide comma vs tab
+                    $firstLine = file_get_contents($tmpName, false, null, 0, 4096);
+                    if ($firstLine === false) {
+                        throw new RuntimeException('Unable to read the uploaded CSV file.');
+                    }
+                    // Strip BOM if present
+                    $firstLine = preg_replace('/^\xEF\xBB\xBF/', '', $firstLine);
+                    $firstLine = strtok($firstLine, "\n");
+                    $tabCount   = substr_count($firstLine, "\t");
+                    $commaCount = substr_count($firstLine, ',');
+                    $delimiter  = ($tabCount > $commaCount) ? "\t" : ',';
+
                     $handle = fopen($tmpName, 'rb');
                     if ($handle === false) {
                         throw new RuntimeException('Unable to read the uploaded CSV file.');
                     }
 
-                    $header = fgetcsv($handle);
+                    $header = fgetcsv($handle, 0, $delimiter);
+                    $rowNumber++;
                     if ($header === false) {
                         fclose($handle);
                         throw new RuntimeException('The uploaded CSV file is empty.');
                     }
 
                     $header = array_map('normalizeCsvHeader', $header);
-                    if ($header !== $expectedHeaders) {
-                        fclose($handle);
-                        throw new InvalidArgumentException(
-                            'Invalid CSV format. Expected the columns: product_name,cost_price,retail_price,quantity,expiration_date.'
-                        );
+                    $headerMap = [];
+                    foreach ($header as $index => $name) {
+                        if ($name !== '') {
+                            $headerMap[$name] = $index;
+                        }
+                    }
+
+                    foreach ($expectedHeaders as $expected) {
+                        if (!array_key_exists($expected, $headerMap)) {
+                            fclose($handle);
+                            throw new InvalidArgumentException(
+                                'Invalid CSV format. Expected columns: product_name, cost_price, retail_price, quantity, expiration_date. '
+                              . 'Make sure the first row is the header row and columns are in the correct order.'
+                            );
+                        }
                     }
 
                     $pdo = getPDO();
                     $pdo->beginTransaction();
                     $defaultCategoryId = resolveCategoryId($pdo, 'Uncategorized');
 
-                    while (($row = fgetcsv($handle)) !== false) {
+                    while (($row = fgetcsv($handle, 0, $delimiter)) !== false) {
+                        $rowNumber++;
                         $row = array_map(static fn($value) => trim((string) $value), $row);
-                        if ($row === ['', '', '', '', ''] || array_sum(array_map(static fn($value) => $value === '' ? 0 : 1, $row)) === 0) {
+                        $allEmpty = true;
+                        foreach ($expectedHeaders as $key) {
+                            $value = $row[$headerMap[$key]] ?? '';
+                            if ($value !== '') {
+                                $allEmpty = false;
+                                break;
+                            }
+                        }
+
+                        if ($allEmpty) {
                             $skipped++;
                             continue;
                         }
 
-                        if (count($row) !== count($expectedHeaders)) {
-                            fclose($handle);
-                            $pdo->rollBack();
-                            throw new InvalidArgumentException('Row ' . ($skipped + $updated + $inserted + 2) . ' has missing or extra columns. Expected exactly: product_name,cost_price,retail_price,quantity,expiration_date.');
-                        }
-
-                        $productName = $row[0];
-                        $costPriceValue = $row[1];
-                        $retailPriceValue = $row[2];
-                        $quantityValue    = $row[3];
-                        $expiryValue      = $row[4];
+                        $productName     = $row[$headerMap['product_name']] ?? '';
+                        $costPriceValue  = $row[$headerMap['cost_price']] ?? '';
+                        $retailPriceValue= $row[$headerMap['retail_price']] ?? '';
+                        $quantityValue   = $row[$headerMap['quantity']] ?? '';
+                        $expiryValue     = $row[$headerMap['expiration_date']] ?? '';
 
                         if ($productName === '') {
                             fclose($handle);
                             $pdo->rollBack();
-                            throw new InvalidArgumentException('Row ' . ($skipped + $updated + $inserted + 2) . ' is missing a product name.');
+                            throw new InvalidArgumentException('Row ' . $rowNumber . ' is missing a product name.');
                         }
 
-                        if (!is_numeric($costPriceValue) || !is_numeric($retailPriceValue)) {
+                        if ($costPriceValue === '' || $retailPriceValue === '' || !is_numeric($costPriceValue) || !is_numeric($retailPriceValue)) {
                             fclose($handle);
                             $pdo->rollBack();
-                            throw new InvalidArgumentException('Row ' . ($skipped + $updated + $inserted + 2) . ' has an invalid price value.');
+                            throw new InvalidArgumentException('Row ' . $rowNumber . ' has an invalid price value.');
                         }
 
-                        if (!preg_match('/^-?\d+$/', $quantityValue)) {
+                        if ($quantityValue === '' || !preg_match('/^-?\d+$/', $quantityValue)) {
                             fclose($handle);
                             $pdo->rollBack();
-                            throw new InvalidArgumentException('Row ' . ($skipped + $updated + $inserted + 2) . ' has an invalid quantity value.');
+                            throw new InvalidArgumentException('Row ' . $rowNumber . ' has an invalid quantity value.');
                         }
 
                         $costPrice   = (float) $costPriceValue;
@@ -444,16 +478,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         if ($costPrice < 0 || $retailPrice < 0) {
                             fclose($handle);
                             $pdo->rollBack();
-                            throw new InvalidArgumentException('Row ' . ($skipped + $updated + $inserted + 2) . ' has negative pricing.');
+                            throw new InvalidArgumentException('Row ' . $rowNumber . ' has negative pricing.');
                         }
 
                         if ($quantity < 0) {
                             fclose($handle);
                             $pdo->rollBack();
-                            throw new InvalidArgumentException('Row ' . ($skipped + $updated + $inserted + 2) . ' has negative stock. Quantity must be 0 or higher.');
+                            throw new InvalidArgumentException('Row ' . $rowNumber . ' has negative stock. Quantity must be 0 or higher.');
                         }
 
                         $expiryDate = parseExpiryDate($expiryValue);
+
                         $existingStmt = $pdo->prepare(
                             "SELECT product_id FROM Product
                              WHERE user_id = :user_id AND LOWER(product_name) = LOWER(:product_name)
@@ -466,8 +501,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         $existing = $existingStmt->fetch();
 
                         if ($existing) {
-                            // ── UPDATE existing product ──────────────────
-                            // status is recomputed by trg_product_status_update
                             $updateStmt = $pdo->prepare(
                                 "UPDATE Product
                                  SET product_name = :product_name,
@@ -483,14 +516,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                                 ':cost_price'      => $costPrice,
                                 ':retail_price'    => $retailPrice,
                                 ':expiration_date' => $expiryDate,
-                                ':product_id' => (int) $existing['product_id'],
-                                ':user_id' => $user_id,
+                                ':product_id'      => (int) $existing['product_id'],
+                                ':user_id'         => $user_id,
                             ]);
                             $updated++;
                         } else {
-                            // ── INSERT new product ───────────────────────
-                            // SKU is auto-generated and status is auto-set by
-                            // trg_product_before_insert — do NOT pass them here.
                             $insertStmt = $pdo->prepare(
                                 "INSERT INTO Product
                                     (user_id, category_id, product_name, quantity, cost_price, retail_price, expiration_date)
@@ -498,12 +528,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                                     (:user_id, :category_id, :product_name, :quantity, :cost_price, :retail_price, :expiration_date)"
                             );
                             $insertStmt->execute([
-                                ':user_id' => $user_id,
-                                ':category_id' => $defaultCategoryId,
-                                ':product_name' => $productName,
-                                ':quantity' => $quantity,
-                                ':cost_price' => $costPrice,
-                                ':retail_price' => $retailPrice,
+                                ':user_id'         => $user_id,
+                                ':category_id'     => $defaultCategoryId,
+                                ':product_name'    => $productName,
+                                ':quantity'        => $quantity,
+                                ':cost_price'      => $costPrice,
+                                ':retail_price'    => $retailPrice,
                                 ':expiration_date' => $expiryDate,
                             ]);
                             $inserted++;
@@ -682,585 +712,9 @@ $activePage = 'restock';
   <link rel="stylesheet" href="css/global_restock.css"/>
   <link rel="stylesheet" href="css/sidebar.css"/>
   <link rel="stylesheet" href="css/restock.css"/>
+  <link rel="stylesheet" href="css/restock-inline.css"/>
   <link rel="stylesheet" href="css/main-body.css"/>
 
-  <style>
-  /* ═══════════════════════════════════════════════════════
-     GLOBAL CSS VARS (edit overlay design tokens)
-  ═══════════════════════════════════════════════════════ */
-  :root {
-    --color-cornsilk:    rgba(253, 243, 219, 0.45);
-    --color-floralwhite: rgba(252, 248, 238, 0);
-    --color-gray-100:    #212934;
-    --color-gray-200:    rgba(62, 44, 35, 0.8);
-    --color-gray-300:    rgba(43, 43, 43, 0.8);
-    --color-gray-400:    rgba(0, 0, 0, 0.2);
-    --color-khaki:       rgba(235, 214, 101, 0.66);
-    --text-brown:        #3e2c23;
-    --gap-4: 4px;  --gap-8: 8px; --gap-10: 10px; --gap-15: 15px;
-    --padding-0: 0px; --padding-01: 0; --padding-2: 2px;
-    --padding-10: 10px; --padding-12: 12px; --padding-20: 20px;
-    --br-2: 2px; --br-10: 10px;
-    --font-inter: Inter;
-    --fs-16: 16px; --fs-18: 18px;
-    --border-1: 1px solid var(--color-gray-400);
-    --height-19: 19px; --height-20: 20px; --height-41: 41px; --height-67: 67px;
-  }
-
-  /* ═══════════════════════════════════════════════════════
-     EDIT OVERLAY BACKDROP
-  ═══════════════════════════════════════════════════════ */
-  #edit-product-overlay {
-    display: flex;
-    position: fixed;
-    inset: 0;
-    z-index: 1200;
-    background: rgba(255, 248, 235, 0.15);
-    backdrop-filter: blur(20px);
-    -webkit-backdrop-filter: blur(20px);
-    align-items: center;
-    justify-content: center;
-    padding: 20px;
-    overflow-y: auto;
-    opacity: 0;
-    visibility: hidden;
-    pointer-events: none;
-    transition: opacity 220ms ease, visibility 0s linear 220ms;
-  }
-  #edit-product-overlay.is-open {
-    opacity: 1;
-    visibility: visible;
-    pointer-events: auto;
-    transition: opacity 220ms ease, visibility 0s linear 0s;
-  }
-
-  /* ═══════════════════════════════════════════════════════
-     EDIT OVERLAY — modal card  (matches the design image)
-  ═══════════════════════════════════════════════════════ */
-  .edit-overlay-card {
-    box-sizing: border-box;
-    width: 100%;
-    max-width: 753px;
-    display: flex;
-    flex-direction: column;
-    gap: 0;
-    box-shadow: 36px 30px 13px transparent,
-                23px 19px 12px rgba(62,44,35,0.01),
-                13px 11px 10px rgba(62,44,35,0.05),
-                6px 5px 8px rgba(62,44,35,0.09),
-                1px 1px 4px rgba(62,44,35,0.1);
-    backdrop-filter: blur(20.6px);
-    -webkit-backdrop-filter: blur(20.6px);
-    border-radius: 15px;
-    background: linear-gradient(
-        146.01deg,
-        rgb(255, 246, 236),
-        rgb(254, 246, 227),
-        rgb(255, 244, 216)
-      ),
-      linear-gradient(rgba(252, 248, 238, 0.2), rgba(252, 248, 238, 0.2));
-    border: 2px solid var(--text-brown);
-    overflow: hidden;
-    padding: 17px 15px;
-    opacity: 0;
-    transform: translateY(10px) scale(0.98);
-    transition: opacity 220ms cubic-bezier(.22, .61, .36, 1),
-                transform 220ms cubic-bezier(.22, .61, .36, 1);
-  }
-  #edit-product-overlay.is-open .edit-overlay-card {
-    opacity: 1;
-    transform: translateY(0) scale(1);
-  }
-
-  /* Header row */
-  .eo-header {
-    display: flex;
-    align-items: center;
-    flex-wrap: wrap;
-    gap: var(--gap-10);
-    margin-bottom: 14px;
-  }
-  .eo-title {
-    margin: 0;
-    flex: 1;
-    font-size: 32px;
-    letter-spacing: -0.04em;
-    font-weight: 800;
-    font-family: var(--font-inter);
-    color: var(--text-brown);
-    min-width: 179px;
-  }
-  .eo-close-btn {
-    cursor: pointer;
-    border: 0;
-    padding: 0;
-    background: transparent;
-    height: 34px;
-    width: 34px;
-    border-radius: 50%;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 18px;
-    color: var(--text-brown);
-    transition: background 0.15s;
-  }
-  .eo-close-btn:hover { background: rgba(62,44,35,0.1); }
-
-  /* Flash banner */
-  .eo-flash {
-    display: none;
-    padding: 8px 14px;
-    border-radius: var(--br-10);
-    font-family: var(--font-inter);
-    font-size: 14px;
-    margin-bottom: 10px;
-  }
-  .eo-flash.show { display: block; }
-  .eo-flash.flash-success { background:#d4edda; color:#155724; border:1px solid #c3e6cb; }
-  .eo-flash.flash-error   { background:#f8d7da; color:#721c24; border:1px solid #f5c6cb; }
-
-  /* Inner beige form section */
-  .eo-form-card {
-    box-shadow: 31px 57px 18px transparent,
-                20px 36px 17px rgba(0,0,0,0.01),
-                11px 20px 14px rgba(0,0,0,0.03),
-                5px 9px 10px rgba(0,0,0,0.04),
-                1px 2px 6px rgba(0,0,0,0.05);
-    border-radius: var(--br-10);
-    overflow: hidden;
-    padding: var(--padding-12) 14px var(--padding-10);
-    display: flex;
-    flex-direction: column;
-    gap: var(--gap-8);
-    background: linear-gradient(180deg, rgba(255, 238, 227, 0.79), #fcf8ebeb);
-    font-family: var(--font-inter);
-    font-size: var(--fs-18);
-    color: var(--color-gray-100);
-  }
-
-  /* Top row: image + product name/category */
-  .eo-top-row {
-    display: flex;
-    align-items: flex-start;
-    gap: var(--gap-10);
-    flex-wrap: wrap;
-  }
-
-  /* Image upload box */
-  .eo-img-box {
-    height: 201px;
-    width: 232px;
-    flex-shrink: 0;
-    border-radius: var(--br-10);
-    border: 2px dashed rgba(62,44,35,0.3);
-    background: rgba(253,243,219,0.5);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    position: relative;
-    cursor: pointer;
-    overflow: hidden;
-  }
-  .eo-img-box input[type="file"] {
-    position: absolute;
-    inset: 0;
-    opacity: 0;
-    cursor: pointer;
-    width: 100%;
-    height: 100%;
-  }
-  .eo-img-box img.eo-img-preview {
-    position: absolute;
-    inset: 0;
-    width: 100%;
-    height: 100%;
-    object-fit: cover;
-    border-radius: var(--br-10);
-    display: none;
-  }
-  .eo-img-placeholder {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 6px;
-    pointer-events: none;
-    color: var(--text-brown);
-    opacity: 0.45;
-  }
-  .eo-img-placeholder i    { font-size: 52px; }
-  .eo-img-placeholder span { font-size: 12px; font-family: var(--font-inter); }
-
-  /* Right fields */
-  .eo-right-fields {
-    flex: 1;
-    display: flex;
-    flex-direction: column;
-    gap: var(--gap-8);
-    min-width: 220px;
-    justify-content: center;
-    padding: 30px 0 28px;
-  }
-
-  /* Field group */
-  .eo-field-group {
-    display: flex;
-    flex-direction: column;
-    gap: var(--gap-4);
-    align-self: stretch;
-  }
-  .eo-label {
-    font-size: var(--fs-16);
-    letter-spacing: -0.04em;
-    color: var(--text-brown);
-    font-weight: 500;
-  }
-  .eo-input-field {
-    height: var(--height-41);
-    border-radius: var(--br-10);
-    background-color: var(--color-cornsilk);
-    border: var(--border-1);
-    box-sizing: border-box;
-    display: flex;
-    align-items: center;
-    padding: var(--padding-10) var(--padding-12) var(--padding-10) var(--padding-20);
-    gap: 4px;
-  }
-  .eo-input-field input {
-    width: 100%;
-    border: 0;
-    outline: 0;
-    font-family: var(--font-inter);
-    font-size: var(--fs-16);
-    background: transparent;
-    letter-spacing: -0.04em;
-    color: var(--color-gray-300);
-    padding: 0;
-  }
-  .eo-peso { font-size: var(--fs-16); color: var(--text-brown); flex-shrink: 0; }
-
-  /* SKU (read-only) */
-  .eo-sku-field {
-    height: var(--height-41);
-    border-radius: var(--br-10);
-    background-color: var(--color-cornsilk);
-    border: var(--border-1);
-    box-sizing: border-box;
-    display: flex;
-    align-items: center;
-    padding: var(--padding-10) var(--padding-12) var(--padding-10) var(--padding-20);
-    font-family: var(--font-inter);
-    font-size: var(--fs-16);
-    color: var(--color-gray-200);
-    letter-spacing: -0.04em;
-  }
-
-  /* Expiry date row */
-  .eo-expiry-wrap {
-    height: 42px;
-    border-radius: var(--br-10);
-    background-color: var(--color-cornsilk);
-    border: var(--border-1);
-    box-sizing: border-box;
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: var(--padding-10) var(--padding-12) var(--padding-10) var(--padding-20);
-    font-size: 13px;
-    color: var(--color-gray-200);
-  }
-  .eo-date-picker {
-    display: flex;
-    align-items: center;
-    gap: var(--gap-10);
-  }
-  .eo-date-picker i { font-size: 16px; color: var(--text-brown); }
-  .eo-date-picker input[type="date"] {
-    border: 0; outline: 0; background: transparent;
-    font-family: var(--font-inter); font-size: 13px;
-    color: var(--color-gray-200); cursor: pointer;
-  }
-  .eo-none-part {
-    display: flex; align-items: center; gap: 6px;
-    font-size: 13px; color: var(--text-brown);
-  }
-
-  /* Inline row for multiple fields */
-  .eo-fields-row {
-    display: flex;
-    flex-wrap: wrap;
-    gap: var(--gap-10);
-    align-items: flex-start;
-  }
-  .eo-fields-row .eo-field-group { flex: 1; min-width: 140px; }
-
-  /* Notes textarea */
-  .eo-textarea-field {
-    height: 72px;
-    border-radius: var(--br-10);
-    background-color: var(--color-cornsilk);
-    border: var(--border-1);
-    box-sizing: border-box;
-    display: flex;
-    align-items: flex-start;
-    padding: 9px 18px;
-    overflow: hidden;
-  }
-  .eo-textarea-field textarea {
-    width: 100%; border: 0; outline: 0; background: transparent;
-    font-family: var(--font-inter); font-size: var(--fs-16);
-    color: var(--color-gray-300); resize: none; height: 100%;
-    letter-spacing: -0.04em;
-  }
-
-  /* Footer buttons */
-  .eo-footer {
-    display: flex;
-    align-items: center;
-    justify-content: flex-end;
-    padding: 2px 0 0;
-    gap: var(--gap-10);
-  }
-  .eo-btn-cancel {
-    border: none; background: transparent; cursor: pointer;
-    border-radius: 231px;
-    padding: var(--padding-10) var(--padding-20);
-    font-family: var(--font-inter); font-size: var(--fs-16);
-    font-weight: 500; letter-spacing: -0.04em; color: var(--text-brown);
-  }
-  .eo-btn-cancel:hover { text-decoration: underline; }
-  .eo-btn-update {
-    cursor: pointer;
-    border: 2px solid var(--text-brown);
-    padding: var(--padding-10) var(--padding-20);
-    background-color: var(--color-khaki);
-    box-shadow: -26px -17px 9px transparent inset,
-                -17px -11px 8px rgba(44,44,44,0.01) inset,
-                -9px -6px 7px rgba(44,44,44,0.05) inset,
-                -4px -3px 5px rgba(44,44,44,0.09) inset,
-                -1px -1px 3px rgba(44,44,44,0.1) inset;
-    border-radius: 231px;
-    display: flex; align-items: center; justify-content: center;
-    font-family: var(--font-inter); font-size: var(--fs-16);
-    font-weight: 500; letter-spacing: -0.04em; color: var(--text-brown);
-  }
-  .eo-btn-update:hover { background-color: rgba(235,214,101,0.9); }
-
-  @media screen and (max-width: 800px) {
-    .edit-overlay-card { max-width: 100%; width: calc(100% - 40px); }
-    .eo-title { font-size: 26px; }
-  }
-  @media screen and (max-width: 450px) {
-    .eo-title { font-size: 19px; }
-    .eo-fields-row { flex-wrap: wrap; }
-  }
-  #edit-product-overlay,
-  #del-modal-overlay,
-  #csv-import-overlay,
-  #img-preview-overlay {
-    position: fixed;
-    inset: 0;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    padding: 20px;
-    z-index: 1200;
-    opacity: 0;
-    visibility: hidden;
-    pointer-events: none;
-    transition: opacity 220ms ease, visibility 0s linear 220ms;
-  }
-  #edit-product-overlay.is-open,
-  #del-modal-overlay.is-open,
-  #csv-import-overlay.is-open,
-  #img-preview-overlay.is-open {
-    opacity: 1;
-    visibility: visible;
-    pointer-events: auto;
-    transition: opacity 220ms ease, visibility 0s linear 0s;
-  }
-  #edit-product-overlay {
-    background: rgba(48,35,21,0.24);
-    backdrop-filter: blur(14px);
-    -webkit-backdrop-filter: blur(14px);
-  }
-  #del-modal-overlay,
-  #csv-import-overlay {
-    background: rgba(48,35,21,0.24);
-    backdrop-filter: blur(14px);
-    -webkit-backdrop-filter: blur(14px);
-  }
-  #img-preview-overlay {
-    background: rgba(0, 0, 0, 0.65);
-    backdrop-filter: blur(6px);
-    -webkit-backdrop-filter: blur(6px);
-  }
-  #del-modal-box,
-  #csv-import-modal {
-    background: #fff;
-    border-radius: 12px;
-    padding: 32px 28px 24px;
-    min-width: 300px;
-    max-width: 420px;
-    text-align: center;
-    box-shadow: 0 8px 32px rgba(0,0,0,0.18);
-    font-family: inherit;
-    opacity: 0;
-    transform: translateY(10px) scale(0.98);
-    transition: opacity 220ms cubic-bezier(.22, .61, .36, 1),
-                transform 220ms cubic-bezier(.22, .61, .36, 1);
-  }
-  #del-modal-overlay.is-open #del-modal-box,
-  #csv-import-overlay.is-open #csv-import-modal {
-    opacity: 1;
-    transform: translateY(0) scale(1);
-  }
-  #del-modal-icon  { font-size: 2.4rem; margin-bottom: 8px; }
-  #del-modal-title { font-size: 1.15rem; font-weight: 700; margin-bottom: 8px; color: #1a1a2e; }
-  #del-modal-body  { font-size: 0.95rem; color: #444; line-height: 1.6; }
-  #csv-import-modal {
-    text-align: left;
-    width: min(520px, calc(100vw - 40px));
-    min-width: 320px;
-    max-width: 520px;
-    background: linear-gradient(180deg, rgba(255, 238, 227, 0.92), #fcf8ee);
-    border: 1.5px solid var(--1-brown);
-    border-radius: var(--br-15);
-    box-shadow: var(--shadow-drop), 0 18px 48px rgba(62, 44, 35, 0.22);
-  }
-  .csv-import-icon {
-    width: 48px;
-    height: 48px;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    margin-bottom: 12px;
-    border-radius: 50%;
-    background: var(--color-khaki-200);
-    border: 1px solid rgba(62, 44, 35, 0.22);
-    color: var(--1-brown);
-    font-size: 1.35rem;
-    box-shadow: var(--shadow-inner);
-  }
-  .csv-import-title {
-    font-size: 1.2rem;
-    font-weight: 700;
-    margin-bottom: 10px;
-    color: var(--1-brown);
-  }
-  .csv-import-body {
-    font-size: 0.95rem;
-    color: rgba(62, 44, 35, 0.86);
-    line-height: 1.6;
-    white-space: pre-line;
-    margin-bottom: 0;
-  }
-  #csv-import-modal[data-variant="error"] .csv-import-icon {
-    background: #fee2e2;
-    border-color: rgba(235, 69, 58, 0.35);
-    color: var(--red);
-  }
-  #csv-import-modal[data-variant="success"] .csv-import-icon {
-    background: #d1fae5;
-    border-color: rgba(21, 148, 89, 0.35);
-    color: var(--green);
-  }
-  #csv-import-modal[data-variant="loading"] .csv-import-icon {
-    background: var(--yellow-white);
-    color: var(--1-brown);
-  }
-  .csv-import-buttons {
-    display: flex;
-    justify-content: flex-end;
-    gap: 10px;
-    margin-top: 22px;
-  }
-  .csv-import-btn-secondary,
-  .csv-import-btn-primary {
-    border: none;
-    border-radius: 999px;
-    padding: 10px 20px;
-    font-family: inherit;
-    font-size: 0.95rem;
-    font-weight: 700;
-    cursor: pointer;
-    transition: opacity 0.15s ease, transform 0.15s ease;
-  }
-  .csv-import-btn-secondary {
-    background: rgba(255, 255, 255, 0.72);
-    border: 1px solid rgba(62, 44, 35, 0.3);
-    color: var(--1-brown);
-  }
-  .csv-import-btn-primary {
-    background: var(--color-khaki-200);
-    border: 1.5px solid var(--1-brown);
-    box-shadow: var(--shadow-inner);
-    color: var(--1-brown);
-  }
-  .csv-import-btn-secondary:hover,
-  .csv-import-btn-primary:hover {
-    opacity: 0.94;
-  }
-  #img-preview-box {
-    position: relative;
-    border-radius: 15px;
-    padding: 50px 20px 16px;
-    width: 360px;
-    max-width: 90vw;
-    text-align: center;
-    box-shadow: 0 12px 40px rgba(0,0,0,0.3);
-    background: linear-gradient(
-      146.01deg,
-      rgba(253, 253, 253, 0.98),
-      rgba(254, 246, 227, 0.98) 49.52%,
-      rgba(255, 244, 216, 0.98)
-    );
-    border: 1px solid #3e2c23;
-    opacity: 0;
-    transform: translateY(10px) scale(0.98);
-    transition: opacity 220ms cubic-bezier(.22, .61, .36, 1),
-                transform 220ms cubic-bezier(.22, .61, .36, 1);
-  }
-  #img-preview-overlay.is-open #img-preview-box {
-    opacity: 1;
-    transform: translateY(0) scale(1);
-  }
-  #img-preview-src {
-    width: 320px;
-    height: 320px;
-    max-width: 100%;
-    object-fit: cover;
-    border-radius: 10px;
-    border: 1px solid rgba(62, 44, 35, 0.2);
-    display: block;
-    margin: 0 auto;
-  }
-  #img-preview-name {
-    margin-top: 10px;
-    font-size: 14px;
-    font-weight: 600;
-    color: #3e2c23;
-    font-family: Inter, sans-serif;
-  }
-  #img-preview-close {
-    position: absolute;
-    top: 10px;
-    right: 10px;
-    background: rgba(112, 94, 87, 0.09);
-    border: 1px solid rgba(62, 44, 35, 0.2);
-    border-radius: 50%;
-    width: 30px;
-    height: 30px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    cursor: pointer;
-    font-size: 14px;
-    color: #3e2c23;
-    transition: background 0.15s;
-  }
-  #img-preview-close:hover { background: rgba(62, 44, 35, 0.14); }
-  </style>
 </head>
 <body>
 
@@ -1354,13 +808,9 @@ $activePage = 'restock';
                class="tab-btn <?= $tab === 'near'    ? 'active' : '' ?>">Near Expiry</a>
           </div>
 
-            <button type="button" class="btn-import" onclick="showCsvImportPrompt()">
+            <button type="button" class="btn-import" onclick="document.getElementById('csv-upload').click()">
               <i class="bi bi-upload"></i> Import CSV
             </button>
-            <form id="csv-import-form" class="csv-import-form" method="post" action="restock.php" enctype="multipart/form-data">
-              <input type="hidden" name="action" value="import_csv"/>
-              <input type="file" id="csv-upload" name="csv_file" accept=".csv" onchange="handleCsvImport(this)"/>
-            </form>
         </div>
         
       </div>
@@ -1900,17 +1350,21 @@ function handleCsvImport(fileInput) {
 
   var file = fileInput.files[0];
   if (!file.name.toLowerCase().endsWith('.csv')) {
-    openCsvImportNotice('Import Failed', 'Please select a valid CSV file.', 'error');
+    openCsvImportNotice('Import Failed', 'Please select a valid CSV file (.csv only).', 'error');
     fileInput.value = '';
     return;
   }
 
-  if (fileInput.form) {
-    openCsvImportNotice('Uploading CSV', 'Please wait while ListaHub validates and imports your inventory file.', 'loading');
-    window.setTimeout(function() {
-      fileInput.form.submit();
-    }, 80);
+  var form = document.getElementById('csv-import-form');
+  if (!form) {
+    openCsvImportNotice('Import Failed', 'Import form not found. Please refresh the page and try again.', 'error');
+    return;
   }
+
+  openCsvImportNotice('Uploading CSV…', 'Please wait while ListaHub validates and imports your inventory file.', 'loading');
+  window.setTimeout(function() {
+    form.submit();
+  }, 80);
 }
 
 /* ── Searchbar: submit on Enter ──────────────────────────── */
@@ -2018,10 +1472,16 @@ function closeImgPreview() {
   </div>
 </div>
 
-<!-- Standalone delete form — must be inside body, outside batch form -->
+<!-- Standalone delete form — must be inside body, outside all other forms -->
 <form method="post" id="delete-product-form" style="display:none;">
   <input type="hidden" name="action"     value="delete"/>
   <input type="hidden" name="product_id" id="delete-product-id" value=""/>
+</form>
+
+<!-- CSV import form — standalone, outside all other forms so it submits correctly -->
+<form id="csv-import-form" method="post" action="restock.php" enctype="multipart/form-data" style="display:none;">
+  <input type="hidden" name="action" value="import_csv"/>
+  <input type="file" id="csv-upload" name="csv_file" accept=".csv" onchange="handleCsvImport(this)"/>
 </form>
 
 </body>

@@ -1,4 +1,4 @@
-/* index.css — ListaHub Login Page Layout */ /* ══════════════════════════════════════════
+/* index.css — listahub-titleLogin Page Layout */ /* ══════════════════════════════════════════
    PAGE WRAPPER
    INSERT: background image URL for the full-page illustrated background
    (sari-sari store snack illustration — login-page@3x.png)
@@ -25,8 +25,10 @@
   }
 }
 
+html,
 body {
-  overflow-x: hidden;
+  height: 100%;
+  overflow: hidden;
 }
 
 .login-page {
@@ -41,6 +43,7 @@ body {
   background-size: cover;
   background-repeat: no-repeat;
   background-position: top center;
+  background-attachment: fixed;
   line-height: normal;
   letter-spacing: normal;
 } /* ══════════════════════════════════════════
@@ -175,7 +178,7 @@ body {
   text-decoration: underline;
 }
 
-.context-parent {
+.content-area {
   align-self: stretch;
   display: flex;
   flex-shrink: 0;
@@ -189,14 +192,37 @@ body {
   flex: 1;
 }
 .context {
-  height: 71px;
-  width: 313px;
   display: flex;
   flex-direction: column;
   align-items: flex-start;
-  flex-shrink: 0;
-  animation: fadeRightIn 0.9s cubic-bezier(0.22, 1, 0.36, 1) both;
-} /* ══════════════════════════════════════════
+  gap: 16.6px;
+  flex: 1;
+  animation: fadeRightIn 0.88s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.listahub-title {
+  margin: 0;
+  font-size: 62.5px;
+  letter-spacing: -0.02em;
+  line-height: 70px;
+  text-transform: uppercase;
+  font-weight: 900;
+  font-family: var(--font-poppins);
+  color: var(--off-black);
+  animation: fadeUpIn 0.94s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+.listahub-desc {
+  width: 454px;
+  font-size: 15.6px;
+  letter-spacing: -0.04em;
+  font-family: var(--font-inter);
+  color: var(--color-black);
+  text-align: justify;
+  line-height: 1.6;
+  animation: fadeUpIn 1s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+/* ══════════════════════════════════════════
    AUTH CARD
    Transparent frosted glass card with background blur
 ══════════════════════════════════════════ */
@@ -425,44 +451,7 @@ body {
    BRAND TITLE & DESCRIPTION
    (absolutely positioned over left side of background)
 ══════════════════════════════════════════ */
-.listahub {
-  width: 454px;
-  position: absolute;
-  margin: 0 !important;
-  left: 169.3px;
-  top: 285.5px;
-  flex-shrink: 0;
-  height: 70px;
-  font-size: 62.5px;
-  letter-spacing: -0.02em;
-  line-height: 70px;
-  text-transform: uppercase;
-  font-weight: 900;
-  font-family: var(--font-poppins);
-  color: var(--off-black);
-  display: inline-block;
-  z-index: 2;
-  animation: fadeUpIn 0.9s cubic-bezier(0.22, 1, 0.36, 1) both;
-}
-.listahub-is-a {
-  width: 454px;
-  position: absolute;
-  margin: 0 !important;
-  left: 169.3px;
-  bottom: 232.9px;
-  flex-shrink: 0;
-  height: 163px;
-  font-size: 15.6px;
-  letter-spacing: -0.04em;
-  color: var(--color-black);
-  text-align: justify;
-  text-align-last: left;
-  display: flex;
-  align-items: center;
-  z-index: 3;
-  line-height: 1.6;
-  animation: fadeUpIn 1.02s cubic-bezier(0.22, 1, 0.36, 1) both;
-} /* ══════════════════════════════════
+/* ══════════════════════════════════
    RESPONSIVE BREAKPOINTS
 ══════════════════════════════════════════ */
 @media (prefers-reduced-motion: reduce) {
@@ -477,8 +466,8 @@ body {
   .input-field,
   .buttons,
   .text3,
-  .listahub,
-  .listahub-is-a {
+  .listahub-title,
+  .listahub-desc {
     animation: none !important;
     transition: none !important;
   }
@@ -486,11 +475,11 @@ body {
 
 @media screen and (max-width: 1250px) {
   .body-login,
-  .context-parent {
+  .content-area {
     height: auto;
     box-sizing: border-box;
   }
-  .context-parent {
+  .content-area {
     gap: 87px;
     flex-wrap: wrap;
     padding-left: 65px;
@@ -499,8 +488,8 @@ body {
   .sign-up-card {
     flex: 1;
   }
-  .listahub,
-  .listahub-is-a {
+  .listahub-title,
+  .listahub-desc {
     display: none; /* hidden when card wraps; use in-flow text on small screens if needed */
   }
 }
@@ -517,7 +506,7 @@ body {
     padding-right: 50px;
     box-sizing: border-box;
   }
-  .context-parent {
+  .content-area {
     gap: 43px;
     padding: 58px 32px;
     box-sizing: border-box;
@@ -540,7 +529,7 @@ body {
     padding-left: var(--padding-20);
     box-sizing: border-box;
   }
-  .context-parent {
+  .content-area {
     gap: 43px;
     padding: 40px 20px;
     box-sizing: border-box;
@@ -567,7 +556,7 @@ body {
     padding-left: var(--padding-20);
     box-sizing: border-box;
   }
-  .context-parent {
+  .content-area {
     gap: 22px;
     padding: 24px 12px;
   }

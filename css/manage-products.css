@@ -34,7 +34,7 @@ body {
   overflow-y: auto;
   display: flex;
   flex-direction: column;
-  gap: 18px;
+  gap: 20px;
   min-width: 0;
 } /* ═══════════════════════════════════════════════════════════════
    ALERT BANNERS

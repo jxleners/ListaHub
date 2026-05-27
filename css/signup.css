@@ -28,8 +28,11 @@
   }
 }
 
+html,
 body {
-  overflow-x: hidden;
+  height: 100%;
+  /* fully disable scrolling on the browser viewport */
+  overflow: hidden;
 }
 
 .signup-page {
@@ -42,7 +45,9 @@ body {
   background-image: url("/ListaHub/pics_icons/auth-bg.png");
   background-size: cover;
   background-repeat: no-repeat;
-  background-position: top left;
+  background-position: top center;
+  background-attachment: scroll;
+  -webkit-background-size: cover;
   line-height: normal;
   letter-spacing: normal;
 } /* ── Body column ─────────────────────────────────────────── */
@@ -54,6 +59,8 @@ body {
   align-items: center;
   position: relative;
   z-index: 1;
+  max-height: 100vh;
+  overflow: hidden; /* prevent any scrolling; content will be clipped if larger */
 } /* ── Navigation bar ─────────────────────────────────────── */
 .nav {
   align-self: stretch;
@@ -755,5 +762,12 @@ body {
   .sign-up-card {
     padding-left: 38px;
     padding-right: 38px;
+  }
+}
+
+/* Use fixed background only on non-touch devices to avoid mobile issues */
+@media (hover: hover) and (pointer: fine) {
+  .signup-page {
+    background-attachment: fixed;
   }
 }

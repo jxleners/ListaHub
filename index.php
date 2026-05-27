@@ -51,9 +51,21 @@ if (isset($_SESSION['user_id'])) {
       </nav>
 
       <!-- ── MAIN CONTENT ── -->
-      <main class="context-parent">
+      <main class="content-area">
         <!-- Left placeholder (brand text positioned absolutely) -->
-        <div class="context"></div>
+        <div class="context">
+          <h1 class="listahub-title">ListaHub</h1>
+            <div class="listahub-desc">
+              ListaHub is a database-driven Point-of-Sale (POS) and Inventory
+              Management System developed to provide an efficient, organized, and
+              automated solution for managing the daily operations of small
+              businesses, particularly sari-sari stores and mini groceries. It
+              includes secure user authentication, product and category management,
+              inventory and stock monitoring, stock-in and stock-out recording,
+              sales and transaction processing, customer debt management, and csv
+              import and export.
+            </div>
+        </div>
 
         <!-- ── AUTH CARD ── -->
         <section class="sign-up-card">
@@ -127,20 +139,7 @@ if (isset($_SESSION['user_id'])) {
         </section>
       </main>
 
-      <!-- Brand title (positioned absolutely over background) -->
-      <h1 class="listahub">ListaHub</h1>
-
-      <!-- Brand description (positioned absolutely) -->
-      <div class="listahub-is-a">
-        ListaHub is a database-driven Point-of-Sale (POS) and Inventory
-        Management System developed to provide an efficient, organized, and
-        automated solution for managing the daily operations of small
-        businesses, particularly sari-sari stores and mini groceries. It
-        includes secure user authentication, product and category management,
-        inventory and stock monitoring, stock-in and stock-out recording,
-        sales and transaction processing, customer debt management, and csv
-        import and export.
-      </div>
+      
     </section>
   </div>
 </body>
