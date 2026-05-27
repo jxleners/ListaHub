@@ -50,16 +50,16 @@ try {
 function formatExpiry(?string $value): string
 {
     if (empty($value)) {
-        return '—';
+        return '-';
     }
 
     $timestamp = strtotime($value);
-    return $timestamp ? date('m/d/Y', $timestamp) : '—';
+    return $timestamp ? date('m/d/Y', $timestamp) : '-';
 }
 
 function formatCurrency(float $value): string
 {
-    return '₱ ' . number_format($value, 2);
+    return 'PHP ' . number_format($value, 2);
 }
 
 function truncateText(string $value, int $limit): string
@@ -69,11 +69,11 @@ function truncateText(string $value, int $limit): string
     }
 
     if (function_exists('mb_strlen') && mb_strlen($value) > $limit) {
-        return mb_substr($value, 0, max(0, $limit - 1)) . '…';
+        return mb_substr($value, 0, max(0, $limit - 1)) . '...';
     }
 
     if (strlen($value) > $limit) {
-        return substr($value, 0, max(0, $limit - 1)) . '…';
+        return substr($value, 0, max(0, $limit - 1)) . '...';
     }
 
     return $value;
@@ -81,15 +81,15 @@ function truncateText(string $value, int $limit): string
 
 $pdf = new FPDF('P', 'mm', 'A4');
 $pdf->SetAutoPageBreak(true, 12);
-$pdf->SetFont('Helvetica', 'B', 16);
+$pdf->SetFont('Helvetica', 'B', 13);
 $pdf->SetTextColor(62, 44, 35);
 $pdf->Cell(0, 8, 'ListaHub Inventory Export', 0, 1, 'L');
-$pdf->SetFont('Helvetica', '', 10);
+$pdf->SetFont('Helvetica', '', 8);
 $pdf->SetTextColor(60, 60, 60);
-$pdf->Cell(0, 6, 'Generated on ' . date('F j, Y, g:i A'), 0, 1, 'L');
+$pdf->Cell(0, 5, 'Generated on ' . date('F j, Y, g:i A'), 0, 1, 'L');
 
-$pdf->SetFont('Helvetica', '', 9);
-$pdf->Cell(0, 5, 'Filters: ' . ($search !== '' ? 'Search: ' . $search : 'All products') . ($category_filter !== '' ? ' | Category: ' . $category_filter : ''), 0, 1, 'L');
+$pdf->SetFont('Helvetica', '', 7.5);
+$pdf->Cell(0, 4.5, 'Filters: ' . ($search !== '' ? 'Search: ' . $search : 'All products') . ($category_filter !== '' ? ' | Category: ' . $category_filter : ''), 0, 1, 'L');
 $pdf->Ln(2);
 
 $header = [
@@ -102,32 +102,32 @@ $header = [
     'Status' => 22,
 ];
 
-$pdf->SetFont('Helvetica', 'B', 9);
-$pdf->SetTextColor(255, 255, 255);
-$pdf->SetFillColor(95, 70, 50);
+$pdf->SetFont('Helvetica', 'B', 7);
+$pdf->SetTextColor(62, 44, 35);
+$pdf->SetFillColor(235, 214, 101);
 
 $startX = $pdf->leftMargin;
 $pdf->SetXY($startX, $pdf->y);
 foreach ($header as $label => $width) {
-    $pdf->Cell($width, 6, $label, 0, 0, 'L', true);
+    $pdf->Cell($width, 5, $label, 0, 0, 'C', true);
 }
-$pdf->Ln(6);
+$pdf->Ln(5);
 
-$pdf->SetFont('Helvetica', '', 9);
+$pdf->SetFont('Helvetica', '', 7);
 $pdf->SetTextColor(40, 40, 40);
 $pdf->SetFillColor(255, 255, 255);
 
 if ($products === []) {
-    $pdf->Cell(0, 7, 'No products match the selected filters.', 0, 1, 'L');
+    $pdf->Cell(0, 6, 'No products match the selected filters.', 0, 1, 'C');
 } else {
     foreach ($products as $product) {
-        $pdf->Cell($header['Product Name'], 6, truncateText((string) ($product['product_name'] ?? ''), 28), 0, 0, 'L');
-        $pdf->Cell($header['SKU'], 6, truncateText((string) ($product['sku'] ?? '—'), 14), 0, 0, 'L');
-        $pdf->Cell($header['Category'], 6, truncateText((string) ($product['category_name'] ?? 'Uncategorized'), 18), 0, 0, 'L');
-        $pdf->Cell($header['Stock'], 6, (string) (int) ($product['quantity'] ?? 0), 0, 0, 'L');
-        $pdf->Cell($header['Expiry Date'], 6, formatExpiry((string) ($product['expiration_date'] ?? null)), 0, 0, 'L');
-        $pdf->Cell($header['Retail Price'], 6, formatCurrency((float) ($product['retail_price'] ?? 0)), 0, 0, 'L');
-        $pdf->Cell($header['Status'], 6, (string) ($product['status'] ?? 'In Stock'), 0, 1, 'L');
+        $pdf->Cell($header['Product Name'], 5, truncateText((string) ($product['product_name'] ?? ''), 28), 0, 0, 'C');
+        $pdf->Cell($header['SKU'], 5, truncateText((string) ($product['sku'] ?? '-'), 14), 0, 0, 'C');
+        $pdf->Cell($header['Category'], 5, truncateText((string) ($product['category_name'] ?? 'Uncategorized'), 18), 0, 0, 'C');
+        $pdf->Cell($header['Stock'], 5, (string) (int) ($product['quantity'] ?? 0), 0, 0, 'C');
+        $pdf->Cell($header['Expiry Date'], 5, formatExpiry((string) ($product['expiration_date'] ?? null)), 0, 0, 'C');
+        $pdf->Cell($header['Retail Price'], 5, formatCurrency((float) ($product['retail_price'] ?? 0)), 0, 0, 'C');
+        $pdf->Cell($header['Status'], 5, (string) ($product['status'] ?? 'In Stock'), 0, 1, 'C');
     }
 }
 

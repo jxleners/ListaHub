@@ -169,14 +169,47 @@ $is_other = !in_array($current_store_type, $preset_types);
      Lives outside <aside> so it overlays the full page.
      Works on every page that includes sidebar.php.
      ============================================================ -->
-<div id="profile-modal-overlay" style="
-  display:none; position:fixed; inset:0; z-index:2000;
-      background: rgba(48,35,21,0.24);
-    backdrop-filter: blur(14px);
-    -webkit-backdrop-filter: blur(14px);
-  align-items:center; justify-content:center;">
+<style>
+#profile-modal-overlay.profile-modal-overlay {
+  display: flex;
+  position: fixed;
+  inset: 0;
+  z-index: 2000;
+  align-items: center;
+  justify-content: center;
+  background: rgba(48, 35, 21, 0.24);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transition:
+    opacity 220ms ease,
+    visibility 0s linear 220ms;
+}
+#profile-modal-overlay.profile-modal-overlay.active {
+  opacity: 1;
+  visibility: visible;
+  pointer-events: auto;
+  transition:
+    opacity 220ms ease,
+    visibility 0s linear 0s;
+}
+#profile-modal-overlay.profile-modal-overlay .profile-modal-box {
+  opacity: 0;
+  transform: translateY(10px) scale(0.98);
+  transition:
+    opacity 220ms cubic-bezier(0.22, 0.61, 0.36, 1),
+    transform 220ms cubic-bezier(0.22, 0.61, 0.36, 1);
+}
+#profile-modal-overlay.profile-modal-overlay.active .profile-modal-box {
+  opacity: 1;
+  transform: translateY(0) scale(1);
+}
+</style>
+<div id="profile-modal-overlay" class="profile-modal-overlay">
 
-  <div style="
+  <div class="profile-modal-box" style="
     background: linear-gradient(146deg, rgba(253,253,253,0.95), rgba(254,246,227,0.95));
     border: 2px solid #3e2c23;
     border-radius: 15px;
@@ -348,12 +381,14 @@ function toggleOtherStoreType(select) {
 }
 function openProfileModal() {
   var overlay = document.getElementById('profile-modal-overlay');
-  overlay.style.display = 'flex';
+  if (!overlay) return;
+  overlay.classList.add('active');
   document.body.style.overflow = 'hidden';
 }
 function closeProfileModal() {
   var overlay = document.getElementById('profile-modal-overlay');
-  overlay.style.display = 'none';
+  if (!overlay) return;
+  overlay.classList.remove('active');
   document.body.style.overflow = '';
 }
 // Close on backdrop click

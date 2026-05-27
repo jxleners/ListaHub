@@ -37,40 +37,12 @@ function parseExpiryDate(?string $value): ?string {
         $date = DateTimeImmutable::createFromFormat($format, $value);
         $errors = DateTimeImmutable::getLastErrors();
 
-        if ($date instanceof DateTimeImmutable && $errors !== false && $errors['warning_count'] === 0 && $errors['error_count'] === 0) {
+        if ($date instanceof DateTimeImmutable && ($errors === false || ($errors['warning_count'] === 0 && $errors['error_count'] === 0))) {
             return $date->format('Y-m-d');
         }
     }
 
     throw new InvalidArgumentException('Invalid expiry date: ' . $value);
-}
-
-function computeInventoryStatus(int $quantity, ?string $expiration_date, int $threshold = 15): string {
-    $today = new DateTimeImmutable('today');
-
-    if (!empty($expiration_date)) {
-        try {
-            $expiry = new DateTimeImmutable($expiration_date);
-            if ($expiry < $today) {
-                return 'Expired';
-            }
-            if ($expiry <= $today->modify('+30 days')) {
-                return 'Near Expiry';
-            }
-        } catch (Exception $e) {
-            // fall back to quantity-based status below
-        }
-    }
-
-    if ($quantity <= 0) {
-        return 'Out of Stock';
-    }
-
-    if ($quantity < $threshold) {
-        return 'Low Stock';
-    }
-
-    return 'In Stock';
 }
 
 function resolveCategoryId(PDO $pdo, string $category_name): int {
@@ -429,20 +401,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $defaultCategoryId = resolveCategoryId($pdo, 'Uncategorized');
 
                     while (($row = fgetcsv($handle)) !== false) {
-                        if (count($row) !== count($expectedHeaders)) {
-                            fclose($handle);
-                            $pdo->rollBack();
-                            throw new InvalidArgumentException('Row ' . ($skipped + $updated + $inserted + 2) . ' has the wrong number of columns.');
-                        }
-
                         $row = array_map(static fn($value) => trim((string) $value), $row);
                         if ($row === ['', '', '', '', ''] || array_sum(array_map(static fn($value) => $value === '' ? 0 : 1, $row)) === 0) {
                             $skipped++;
                             continue;
                         }
 
-                        $productName      = $row[0];
-                        $costPriceValue   = $row[1];
+                        if (count($row) !== count($expectedHeaders)) {
+                            fclose($handle);
+                            $pdo->rollBack();
+                            throw new InvalidArgumentException('Row ' . ($skipped + $updated + $inserted + 2) . ' has missing or extra columns. Expected exactly: product_name,cost_price,retail_price,quantity,expiration_date.');
+                        }
+
+                        $productName = $row[0];
+                        $costPriceValue = $row[1];
                         $retailPriceValue = $row[2];
                         $quantityValue    = $row[3];
                         $expiryValue      = $row[4];
@@ -478,11 +450,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         if ($quantity < 0) {
                             fclose($handle);
                             $pdo->rollBack();
-                            throw new InvalidArgumentException('Row ' . ($skipped + $updated + $inserted + 2) . ' has negative quantity.');
+                            throw new InvalidArgumentException('Row ' . ($skipped + $updated + $inserted + 2) . ' has negative stock. Quantity must be 0 or higher.');
                         }
 
                         $expiryDate = parseExpiryDate($expiryValue);
-
                         $existingStmt = $pdo->prepare(
                             "SELECT product_id FROM Product
                              WHERE user_id = :user_id AND LOWER(product_name) = LOWER(:product_name)
@@ -499,12 +470,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             // status is recomputed by trg_product_status_update
                             $updateStmt = $pdo->prepare(
                                 "UPDATE Product
-                                 SET product_name    = :product_name,
-                                     quantity        = :quantity,
-                                     cost_price      = :cost_price,
-                                     retail_price    = :retail_price,
+                                 SET product_name = :product_name,
+                                     quantity = :quantity,
+                                     cost_price = :cost_price,
+                                     retail_price = :retail_price,
                                      expiration_date = :expiration_date
-                                 WHERE product_id = :product_id AND user_id = :user_id"
+                                  WHERE product_id = :product_id AND user_id = :user_id"
                             );
                             $updateStmt->execute([
                                 ':product_name'    => $productName,
@@ -512,8 +483,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                                 ':cost_price'      => $costPrice,
                                 ':retail_price'    => $retailPrice,
                                 ':expiration_date' => $expiryDate,
-                                ':product_id'      => (int) $existing['product_id'],
-                                ':user_id'         => $user_id,
+                                ':product_id' => (int) $existing['product_id'],
+                                ':user_id' => $user_id,
                             ]);
                             $updated++;
                         } else {
@@ -522,19 +493,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             // trg_product_before_insert — do NOT pass them here.
                             $insertStmt = $pdo->prepare(
                                 "INSERT INTO Product
-                                    (user_id, category_id, product_name,
-                                     quantity, cost_price, retail_price, expiration_date)
+                                    (user_id, category_id, product_name, quantity, cost_price, retail_price, expiration_date)
                                  VALUES
-                                    (:user_id, :category_id, :product_name,
-                                     :quantity, :cost_price, :retail_price, :expiration_date)"
+                                    (:user_id, :category_id, :product_name, :quantity, :cost_price, :retail_price, :expiration_date)"
                             );
                             $insertStmt->execute([
-                                ':user_id'         => $user_id,
-                                ':category_id'     => $defaultCategoryId,
-                                ':product_name'    => $productName,
-                                ':quantity'        => $quantity,
-                                ':cost_price'      => $costPrice,
-                                ':retail_price'    => $retailPrice,
+                                ':user_id' => $user_id,
+                                ':category_id' => $defaultCategoryId,
+                                ':product_name' => $productName,
+                                ':quantity' => $quantity,
+                                ':cost_price' => $costPrice,
+                                ':retail_price' => $retailPrice,
                                 ':expiration_date' => $expiryDate,
                             ]);
                             $inserted++;
@@ -555,7 +524,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     if (isset($pdo) && $pdo->inTransaction()) $pdo->rollBack();
                     if (isset($handle) && is_resource($handle)) fclose($handle);
                     error_log('CSV import error: ' . $e->getMessage());
-                    $error = 'A database error occurred while importing your CSV.';
+                    $error = 'A database error occurred while importing your CSV: ' . $e->getMessage();
                 }
             }
         }
@@ -1151,26 +1120,54 @@ $activePage = 'restock';
   #del-modal-body  { font-size: 0.95rem; color: #444; line-height: 1.6; }
   #csv-import-modal {
     text-align: left;
-    min-width: 340px;
+    width: min(520px, calc(100vw - 40px));
+    min-width: 320px;
     max-width: 520px;
+    background: linear-gradient(180deg, rgba(255, 238, 227, 0.92), #fcf8ee);
+    border: 1.5px solid var(--1-brown);
+    border-radius: var(--br-15);
+    box-shadow: var(--shadow-drop), 0 18px 48px rgba(62, 44, 35, 0.22);
   }
   .csv-import-icon {
-    font-size: 2.4rem;
-    margin-bottom: 8px;
-    line-height: 1;
+    width: 48px;
+    height: 48px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    margin-bottom: 12px;
+    border-radius: 50%;
+    background: var(--color-khaki-200);
+    border: 1px solid rgba(62, 44, 35, 0.22);
+    color: var(--1-brown);
+    font-size: 1.35rem;
+    box-shadow: var(--shadow-inner);
   }
   .csv-import-title {
-    font-size: 1.15rem;
+    font-size: 1.2rem;
     font-weight: 700;
     margin-bottom: 10px;
-    color: #1a1a2e;
+    color: var(--1-brown);
   }
   .csv-import-body {
     font-size: 0.95rem;
-    color: #444;
+    color: rgba(62, 44, 35, 0.86);
     line-height: 1.6;
     white-space: pre-line;
     margin-bottom: 0;
+  }
+  #csv-import-modal[data-variant="error"] .csv-import-icon {
+    background: #fee2e2;
+    border-color: rgba(235, 69, 58, 0.35);
+    color: var(--red);
+  }
+  #csv-import-modal[data-variant="success"] .csv-import-icon {
+    background: #d1fae5;
+    border-color: rgba(21, 148, 89, 0.35);
+    color: var(--green);
+  }
+  #csv-import-modal[data-variant="loading"] .csv-import-icon {
+    background: var(--yellow-white);
+    color: var(--1-brown);
   }
   .csv-import-buttons {
     display: flex;
@@ -1190,12 +1187,15 @@ $activePage = 'restock';
     transition: opacity 0.15s ease, transform 0.15s ease;
   }
   .csv-import-btn-secondary {
-    background: #6b7280;
-    color: #fff;
+    background: rgba(255, 255, 255, 0.72);
+    border: 1px solid rgba(62, 44, 35, 0.3);
+    color: var(--1-brown);
   }
   .csv-import-btn-primary {
-    background: #3e2c23;
-    color: #fff;
+    background: var(--color-khaki-200);
+    border: 1.5px solid var(--1-brown);
+    box-shadow: var(--shadow-inner);
+    color: var(--1-brown);
   }
   .csv-import-btn-secondary:hover,
   .csv-import-btn-primary:hover {
@@ -1332,7 +1332,6 @@ $activePage = 'restock';
         <div class="toolbar-left">
            
           <form method="get" style="display:contents;">
-          <form method="get" style="display:contents;">
             <input type="hidden" name="tab"  value="<?= htmlspecialchars($tab) ?>"/>
             <input type="hidden" name="page" value="1"/>
             <div class="searchbar">
@@ -1355,10 +1354,10 @@ $activePage = 'restock';
                class="tab-btn <?= $tab === 'near'    ? 'active' : '' ?>">Near Expiry</a>
           </div>
 
-          <button type="button" class="btn-import" onclick="showCsvImportPrompt()">
+            <button type="button" class="btn-import" onclick="showCsvImportPrompt()">
               <i class="bi bi-upload"></i> Import CSV
             </button>
-            <form id="csv-import-form" method="post" enctype="multipart/form-data" style="display:none;">
+            <form id="csv-import-form" class="csv-import-form" method="post" action="restock.php" enctype="multipart/form-data">
               <input type="hidden" name="action" value="import_csv"/>
               <input type="file" id="csv-upload" name="csv_file" accept=".csv" onchange="handleCsvImport(this)"/>
             </form>
@@ -1844,14 +1843,23 @@ function openCsvImportNotice(title, body, variant) {
   var titleEl = document.getElementById('csv-import-title');
   var bodyEl = document.getElementById('csv-import-body');
   var primaryBtn = document.getElementById('csv-import-primary-btn');
+  var secondaryBtn = document.getElementById('csv-import-secondary-btn');
 
-  if (!overlay || !modal || !icon || !titleEl || !bodyEl || !primaryBtn) return;
+  if (!overlay || !modal || !icon || !titleEl || !bodyEl || !primaryBtn || !secondaryBtn) return;
 
   modal.dataset.variant = variant || 'info';
-  icon.textContent = variant === 'error' ? '⚠️' : variant === 'success' ? '✅' : '📄';
+  icon.innerHTML = variant === 'error'
+    ? '<i class="bi bi-exclamation-triangle-fill"></i>'
+    : variant === 'success'
+      ? '<i class="bi bi-check-lg"></i>'
+      : variant === 'loading'
+        ? '<i class="bi bi-hourglass-split"></i>'
+        : '<i class="bi bi-filetype-csv"></i>';
   titleEl.textContent = title || 'CSV Import';
   bodyEl.textContent = body || '';
   primaryBtn.style.display = variant === 'info' ? 'inline-flex' : 'none';
+  secondaryBtn.textContent = variant === 'info' ? 'Cancel' : 'Close';
+  secondaryBtn.style.display = variant === 'loading' ? 'none' : 'inline-flex';
   overlay.classList.add('is-open');
   document.body.style.overflow = 'hidden';
 }
@@ -1866,17 +1874,25 @@ function closeCsvImportNotice() {
 
 function showCsvImportPrompt() {
   var message = [
-    'Use this CSV format:',
+    'Before choosing a file, make sure your CSV uses this exact column order:',
     'product_name,cost_price,retail_price,quantity,expiration_date',
     '',
-    'Example:',
+    'Example rows:',
     'Coke,10,25,50,',
     'Milk,40,95,20,2026-12-01',
     '',
-    'Leave expiration_date empty if the product has no expiry date.'
+    'CSV files only. Empty rows will be ignored. Quantity cannot be negative. Leave expiration_date empty if the product has no expiry date.'
   ].join('\n');
 
-  openCsvImportNotice('CSV Format Guide', message, 'info');
+  openCsvImportNotice('CSV Import Reminder', message, 'info');
+}
+
+function chooseCsvFile() {
+  var fileInput = document.getElementById('csv-upload');
+  if (!fileInput) return;
+
+  fileInput.value = '';
+  fileInput.click();
 }
 
 function handleCsvImport(fileInput) {
@@ -1890,7 +1906,10 @@ function handleCsvImport(fileInput) {
   }
 
   if (fileInput.form) {
-    fileInput.form.submit();
+    openCsvImportNotice('Uploading CSV', 'Please wait while ListaHub validates and imports your inventory file.', 'loading');
+    window.setTimeout(function() {
+      fileInput.form.submit();
+    }, 80);
   }
 }
 
@@ -1981,12 +2000,12 @@ function closeImgPreview() {
 
 <div id="csv-import-overlay" onclick="closeCsvImportNotice()">
   <div id="csv-import-modal" onclick="event.stopPropagation()" data-variant="info">
-    <div id="csv-import-icon" class="csv-import-icon">📄</div>
+    <div id="csv-import-icon" class="csv-import-icon"><i class="bi bi-filetype-csv"></i></div>
     <div id="csv-import-title" class="csv-import-title">CSV Format Guide</div>
     <div id="csv-import-body" class="csv-import-body"></div>
     <div class="csv-import-buttons">
-      <button type="button" class="csv-import-btn-secondary" onclick="closeCsvImportNotice()">Close</button>
-      <button id="csv-import-primary-btn" type="button" class="csv-import-btn-primary" onclick="document.getElementById('csv-upload').click(); closeCsvImportNotice();">Choose File</button>
+      <button id="csv-import-secondary-btn" type="button" class="csv-import-btn-secondary" onclick="closeCsvImportNotice()">Cancel</button>
+      <button id="csv-import-primary-btn" type="button" class="csv-import-btn-primary" onclick="chooseCsvFile()">Choose File</button>
     </div>
   </div>
 </div>

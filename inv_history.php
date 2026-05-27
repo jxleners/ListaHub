@@ -309,7 +309,7 @@ $activePage = 'inv_history';
         <button
           class="btn-page"
           type="button"
-          onclick="goToPage(<?= max(1, $page - 1) ?>)"
+          <?= ($page > 1) ? 'onclick="goToPage(' . max(1, $page - 1) . ')"' : '' ?>
           <?= ($page <= 1) ? 'disabled' : '' ?>
         >
           <!--
@@ -329,7 +329,7 @@ $activePage = 'inv_history';
         <button
           class="btn-page"
           type="button"
-          onclick="goToPage(<?= min($total_pages, $page + 1) ?>)"
+          <?= ($page < $total_pages) ? 'onclick="goToPage(' . min($total_pages, $page + 1) . ')"' : '' ?>
           <?= ($page >= $total_pages) ? 'disabled' : '' ?>
         >
           <span class="btn-page-text">Next →</span>

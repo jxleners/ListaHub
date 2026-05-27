@@ -50,46 +50,144 @@ $activePage = 'pos';
 
   <style>
     #pos-modal-overlay {
-  position: fixed; inset: 0;
-  background: rgba(0,0,0,0.45);
-  display: flex; align-items: center; justify-content: center;
-  z-index: 9999;
-}
-#pos-modal-box {
-  background: #fff;
-  border-radius: 12px;
-  padding: 32px 28px 24px;
-  min-width: 300px; max-width: 420px;
-  text-align: left;
-  box-shadow: 0 8px 32px rgba(0,0,0,0.18);
-  font-family: inherit;
-}
-#pos-modal-icon  { font-size: 2.4rem; margin-bottom: 8px; text-align: center;}
-#pos-modal-title { font-size: 1.15rem; font-weight: 700; margin-bottom: 8px; color: #1a1a2e; text-align: center;}
-#pos-modal-body  { font-size: 0.95rem; color: #444; line-height: 1.6; margin-bottom: 20px; white-space: pre-line; }
-#pos-modal-btn {
-  background: #4f46e5; color: #fff;
-  border: none; border-radius: 8px;
-  padding: 10px 32px; font-size: 1rem;
-  cursor: pointer; transition: background .2s;
-}
-#pos-modal-btn:hover { background: #4338ca; }
-
-/* type variants */
-#pos-modal-box.success #pos-modal-btn { background: #16a34a; }
-#pos-modal-box.success #pos-modal-btn:hover { background: #15803d; }
-#pos-modal-box.error   #pos-modal-btn { background: #dc2626; }
-#pos-modal-box.error   #pos-modal-btn:hover { background: #b91c1c; }
+      position: fixed;
+      inset: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+      background: rgba(48, 35, 21, 0.24);
+      backdrop-filter: blur(14px);
+      -webkit-backdrop-filter: blur(14px);
+      z-index: 9999;
+      opacity: 0;
+      visibility: hidden;
+      pointer-events: none;
+      transition: opacity 220ms ease, visibility 0s linear 220ms;
+    }
+    #pos-modal-overlay.is-open {
+      opacity: 1;
+      visibility: visible;
+      pointer-events: auto;
+      transition: opacity 220ms ease, visibility 0s linear 0s;
+    }
+    #pos-modal-box {
+      width: min(420px, calc(100vw - 40px));
+      box-sizing: border-box;
+      background: linear-gradient(160deg, rgba(253, 253, 253, 0.94), rgba(254, 246, 227, 0.94) 52%, rgba(255, 244, 216, 0.96));
+      border: 1.5px solid var(--1-brown);
+      border-radius: 15px;
+      padding: 28px 24px 22px;
+      text-align: center;
+      box-shadow:
+        36px 30px 13px rgba(62, 44, 35, 0),
+        23px 19px 12px rgba(62, 44, 35, 0.01),
+        13px 11px 10px rgba(62, 44, 35, 0.05),
+        6px 5px 8px rgba(62, 44, 35, 0.09),
+        1px 1px 4px rgba(62, 44, 35, 0.1);
+      font-family: var(--font-inter);
+      opacity: 0;
+      transform: translateY(12px) scale(0.98);
+      transition:
+        opacity 220ms cubic-bezier(.22, .61, .36, 1),
+        transform 240ms cubic-bezier(0.34, 1.56, 0.64, 1);
+    }
+    #pos-modal-overlay.is-open #pos-modal-box {
+      opacity: 1;
+      transform: translateY(0) scale(1);
+    }
+    #pos-modal-icon {
+      width: 48px;
+      height: 48px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      margin: 0 auto 12px;
+      border-radius: 50%;
+      background: rgba(235, 214, 101, 0.46);
+      border: 1px solid rgba(62, 44, 35, 0.22);
+      color: var(--1-brown);
+      font-size: 1.35rem;
+      box-shadow: var(--shadow-inner);
+    }
+    #pos-modal-title {
+      font-size: 1.2rem;
+      font-weight: 800;
+      margin-bottom: 8px;
+      color: var(--1-brown);
+      line-height: 1.2;
+      text-align: center;
+    }
+    #pos-modal-body {
+      font-size: 0.95rem;
+      color: rgba(62, 44, 35, 0.86);
+      line-height: 1.6;
+      margin-bottom: 22px;
+      white-space: pre-line;
+      text-align: center;
+    }
+    .pos-modal-actions {
+      display: flex;
+      justify-content: center;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+    #pos-modal-btn,
+    #pos-modal-cancel-btn {
+      border-radius: 999px;
+      padding: 10px 28px;
+      min-width: 112px;
+      font-family: var(--font-inter);
+      font-size: 0.95rem;
+      font-weight: 700;
+      color: var(--1-brown);
+      cursor: pointer;
+      transition: opacity 0.15s ease, transform 0.15s ease, background-color 0.15s ease;
+    }
+    #pos-modal-btn {
+      background: rgba(235, 214, 101, 0.76);
+      border: 1.5px solid var(--1-brown);
+      box-shadow: var(--shadow-inner);
+    }
+    #pos-modal-cancel-btn {
+      background: rgba(255, 255, 255, 0.72);
+      border: 1px solid rgba(62, 44, 35, 0.3);
+    }
+    #pos-modal-btn:hover,
+    #pos-modal-cancel-btn:hover {
+      opacity: 0.94;
+      transform: translateY(-1px);
+    }
+    #pos-modal-box.success #pos-modal-icon {
+      background: #d1fae5;
+      border-color: rgba(21, 148, 89, 0.35);
+      color: #159459;
+    }
+    #pos-modal-box.error #pos-modal-icon {
+      background: #fee2e2;
+      border-color: rgba(235, 69, 58, 0.35);
+      color: #eb453a;
+    }
+    #pos-modal-box.warning #pos-modal-icon {
+      background: rgba(235, 214, 101, 0.52);
+      border-color: rgba(230, 168, 23, 0.38);
+      color: #8a6410;
+    }
+    #pos-modal-box.info #pos-modal-icon {
+      background: #e3ebff;
+      border-color: rgba(37, 131, 194, 0.35);
+      color: #2583c2;
+    }
   </style>
 </head>
 <body>
-<div id="pos-modal-overlay" style="display:none;" onclick="closePosModal()">
+<div id="pos-modal-overlay" onclick="closePosModal()">
   <div id="pos-modal-box" onclick="event.stopPropagation()">
   <div id="pos-modal-icon"></div>
   <div id="pos-modal-title"></div>
   <div id="pos-modal-body"></div>
-  <div style="display:flex; gap:10px; justify-content:center;">
-    <button id="pos-modal-cancel-btn" onclick="cancelPosModal()" style="display:none; background:#6b7280; color:#fff; border:none; border-radius:8px; padding:10px 32px; font-size:1rem; cursor:pointer;">Cancel</button>
+  <div class="pos-modal-actions">
+    <button id="pos-modal-cancel-btn" onclick="cancelPosModal()" style="display:none;">Cancel</button>
     <button id="pos-modal-btn" onclick="closePosModal()">OK</button>
   </div>
 </div>
@@ -718,22 +816,27 @@ function renderPage() {
 }
 
 function showPosModal(type, title, body, onClose) {
-  var icons = { success: '✅', error: '❌', warning: '⚠️', info: 'ℹ️' };
+  var icons = {
+    success: '<i class="bi bi-check-lg"></i>',
+    error: '<i class="bi bi-x-lg"></i>',
+    warning: '<i class="bi bi-exclamation-triangle-fill"></i>',
+    info: '<i class="bi bi-info-lg"></i>'
+  };
   var box = document.getElementById('pos-modal-box');
   box.className = type;
-  document.getElementById('pos-modal-icon').textContent  = icons[type] || '';
+  document.getElementById('pos-modal-icon').innerHTML = icons[type] || icons.info;
   document.getElementById('pos-modal-title').textContent = title;
-  document.getElementById('pos-modal-body').textContent  = body;
+  document.getElementById('pos-modal-body').textContent = body;
   box._onClose = onClose || null;
 
-  // show Cancel button only on confirmation dialogs (those with an onClose callback)
-  document.getElementById('pos-modal-cancel-btn').style.display = onClose ? 'inline-block' : 'none';
-
-  document.getElementById('pos-modal-overlay').style.display = 'flex';
+  document.getElementById('pos-modal-cancel-btn').style.display = onClose ? 'inline-flex' : 'none';
+  document.getElementById('pos-modal-overlay').classList.add('is-open');
+  document.body.style.overflow = 'hidden';
 }
 
 function closePosModal() {
-  document.getElementById('pos-modal-overlay').style.display = 'none';
+  document.getElementById('pos-modal-overlay').classList.remove('is-open');
+  document.body.style.overflow = '';
   var box = document.getElementById('pos-modal-box');
   if (typeof box._onClose === 'function') {
     box._onClose();
@@ -742,11 +845,11 @@ function closePosModal() {
 }
 
 function cancelPosModal() {
-  document.getElementById('pos-modal-overlay').style.display = 'none';
+  document.getElementById('pos-modal-overlay').classList.remove('is-open');
+  document.body.style.overflow = '';
   var box = document.getElementById('pos-modal-box');
-  box._onClose = null;  // discard callback — sale does NOT proceed
+  box._onClose = null;  // discard callback - sale does NOT proceed
 }
-
 document.getElementById('btn-prev').addEventListener('click', function() {
   if (currentPage > 1) {
     currentPage--;
