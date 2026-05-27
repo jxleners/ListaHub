@@ -22,7 +22,7 @@ $login    = trim($_POST["login"]    ?? '');
 $password =      $_POST["password"] ?? '';
 
 if (empty($login) || empty($password)) {
-    echo "<script>alert('Please enter your username/email and password.'); window.location='index.php';</script>";
+    header("Location: index.php?error=" . urlencode('Please enter your username/email and password.'));
     exit;
 }
 
@@ -41,7 +41,7 @@ try {
 
     // password_verify() requirement
     if (!$user || !password_verify($password, $user['password_hash'])) {
-        echo "<script>alert('Invalid username/email or password.'); window.location='index.php';</script>";
+        header("Location: index.php?error=" . urlencode('Invalid username/email or password.'));
         exit;
     }
 
@@ -65,7 +65,7 @@ try {
 
 } catch (PDOException $e) {
     error_log("Login error: " . $e->getMessage());
-    echo "<script>alert('A server error occurred. Please try again.'); window.location='index.php';</script>";
+    header("Location: index.php?error=" . urlencode('A server error occurred. Please try again.'));
     exit;
 }
 ?>

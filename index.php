@@ -5,6 +5,7 @@ if (isset($_SESSION['user_id'])) {
     header("Location: dashboard.php");
     exit;
 }
+$loginError = isset($_GET['error']) ? htmlspecialchars(trim($_GET['error'])) : '';
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -142,5 +143,112 @@ if (isset($_SESSION['user_id'])) {
       
     </section>
   </div>
+
+  <!-- ── LOGIN ERROR MODAL ── -->
+  <?php if ($loginError): ?>
+  <div class="login-error-overlay" id="loginErrorOverlay">
+    <div class="login-error-card" id="loginErrorCard">
+      <div class="login-error-icon">
+        <svg width="28" height="28" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <circle cx="12" cy="12" r="10" stroke="#3e2c23" stroke-width="2"/>
+          <path d="M12 7v5" stroke="#3e2c23" stroke-width="2" stroke-linecap="round"/>
+          <circle cx="12" cy="16.5" r="1" fill="#3e2c23"/>
+        </svg>
+      </div>
+      <p class="login-error-msg"><?= $loginError ?></p>
+      <button class="login-error-btn" onclick="closeLoginError()">OK</button>
+    </div>
+  </div>
+  <style>
+    .login-error-overlay {
+      display: flex;
+      position: fixed;
+      inset: 0;
+      z-index: 9999;
+      background: linear-gradient(
+        180deg,
+        rgba(235, 233, 225, 0.55),
+        rgba(169, 174, 181, 0.55)
+      );
+      backdrop-filter: blur(51px);
+      -webkit-backdrop-filter: blur(51px);
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+    }
+    .login-error-card {
+      box-sizing: border-box;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 14px;
+      width: 100%;
+      max-width: 360px;
+      background: linear-gradient(
+          146.01deg,
+          rgba(253, 253, 253, 0.58),
+          rgba(254, 246, 227, 0.49) 49.52%,
+          rgba(255, 244, 216, 0.6)
+        ),
+        linear-gradient(rgba(252, 248, 238, 0.2), rgba(252, 248, 238, 0.2));
+      border: 2px solid #3e2c23;
+      border-radius: 15px;
+      padding: 28px 24px 22px;
+      box-shadow:
+        36px 30px 13px transparent,
+        23px 19px 12px rgba(62, 44, 35, 0.01),
+        13px 11px 10px rgba(62, 44, 35, 0.05),
+        6px 5px 8px rgba(62, 44, 35, 0.09),
+        1px 1px 4px rgba(62, 44, 35, 0.1);
+      backdrop-filter: blur(20.6px);
+      -webkit-backdrop-filter: blur(20.6px);
+      animation: loginErrIn 0.2s ease;
+    }
+    @keyframes loginErrIn {
+      from { opacity: 0; transform: scale(0.92); }
+      to   { opacity: 1; transform: scale(1); }
+    }
+    .login-error-icon {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .login-error-msg {
+      margin: 0;
+      font-family: 'Inter', sans-serif;
+      font-size: 15px;
+      font-weight: 600;
+      color: #3e2c23;
+      text-align: center;
+      line-height: 1.4;
+    }
+    .login-error-btn {
+      margin-top: 4px;
+      padding: 9px 36px;
+      background: #3e2c23;
+      color: #fff;
+      font-family: 'Inter', sans-serif;
+      font-size: 14px;
+      font-weight: 600;
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
+      transition: background 0.15s;
+    }
+    .login-error-btn:hover {
+      background: #5a3e30;
+    }
+  </style>
+  <script>
+    function closeLoginError() {
+      var overlay = document.getElementById('loginErrorOverlay');
+      if (overlay) overlay.style.display = 'none';
+    }
+    // Close on backdrop click
+    document.getElementById('loginErrorOverlay').addEventListener('click', function(e) {
+      if (e.target === this) closeLoginError();
+    });
+  </script>
+  <?php endif; ?>
 </body>
 </html>
