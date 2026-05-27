@@ -14,3 +14,10 @@
 [26-May-2026 11:38:35 Europe/Berlin] Edit log error: SQLSTATE[42S22]: Column not found: 1054 Unknown column 'selling_price' in 'field list'
 [26-May-2026 11:38:45 Europe/Berlin] Edit log error: SQLSTATE[42S22]: Column not found: 1054 Unknown column 'selling_price' in 'field list'
 [26-May-2026 11:41:23 Europe/Berlin] Product addition log error: SQLSTATE[42S22]: Column not found: 1054 Unknown column 'selling_price' in 'field list'
+[27-May-2026 06:15:49 Europe/Berlin] PHP Fatal error:  Uncaught TypeError: PDO::prepare(): Argument #1 ($query) must be of type string, array given in C:\xampp\htdocs\ListaHub\manage-products.php:189
+Stack trace:
+#0 C:\xampp\htdocs\ListaHub\manage-products.php(189): PDO->prepare(Array)
+#1 {main}
+  thrown in C:\xampp\htdocs\ListaHub\manage-products.php on line 189
+[27-May-2026 06:33:59 Europe/Berlin] Edit log error: SQLSTATE[23000]: Integrity constraint violation: 4025 CONSTRAINT `chk_qty_change` failed for `listahub_db`.`inventory_log`
+[27-May-2026 06:47:35 Europe/Berlin] Edit log error: SQLSTATE[23000]: Integrity constraint violation: 4025 CONSTRAINT `chk_qty_change` failed for `listahub_db`.`inventory_log`

@@ -4,8 +4,9 @@
 //  Changes vs original:
 //   • Eye icon opens Edit Product modal (same page, no redirect)
 //   • Add Qty stepper default = 0 (Complete saves all qty > 0)
-//   • action=update  → edits product + logs 'manual' Inventory_Log
-//   • action=delete  → deletes product + logs 'manual' Inventory_Log
+//   • action=update  → edits product + logs 'product_edit' to Inventory_Log
+//   • action=delete  → deletes product (expired: trigger handles log;
+//                       non-expired: PHP logs 'product_deletion')
 //   • Complete button batch-restocks every row whose qty > 0
 // ============================================================
 session_start();
@@ -223,14 +224,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
                 $final_expiry = ($no_expiry || empty($expiry_date)) ? null : $expiry_date;
 
-                // Snapshot old quantity for inventory log
+                // Snapshot old quantity BEFORE the UPDATE runs
                 $oldStmt = $pdo->prepare(
                     "SELECT quantity, product_name FROM Product WHERE product_id = :id AND user_id = :uid"
                 );
                 $oldStmt->execute([':id' => $product_id, ':uid' => $user_id]);
                 $old = $oldStmt->fetch();
                 $old_qty  = (int)($old['quantity'] ?? 0);
-                $old_name = $old['product_name'] ?? '';
 
                 // Handle optional image upload
                 $image_url = null;
@@ -276,34 +276,32 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     ]);
                 }
 
-                // Log the edit to Inventory_Log
-                try {
-                    $qty_diff    = $quantity - $old_qty;
-                    $move_type   = $qty_diff >= 0 ? 'in' : 'out';
-                    $qty_change  = abs($qty_diff) > 0 ? abs($qty_diff) : 1;
-                    $stock_after = $qty_diff !== 0 ? $quantity : $old_qty;
-
-                    $logStmt = $pdo->prepare(
+                // ── Log quantity change if it actually changed ──────────
+                // quantity_change has CHECK (> 0), so only log when the
+                // quantity actually differs. Using abs() satisfies the
+                // constraint regardless of direction.
+                $qty_diff = $quantity - $old_qty;
+                if ($qty_diff !== 0) {
+                    try {
+                        $logStmt = $pdo->prepare(
                         "INSERT INTO Inventory_Log
-                            (product_id, product_name_snap, movement_type,
-                             quantity_change, selling_price, stock_before, stock_after,
-                             reference_type, adjustment_reason)
-                         VALUES
-                            (:pid, :pname, :move,
-                             :change, :price, :before, :after,
-                             'product_edit', NULL)"
+                            (product_id, user_id_snap, product_name_snap, quantity_change,
+                            stock_before, stock_after, unit_price, transaction_type, transaction_id)
+                        VALUES
+                            (:pid, :user_id, :pname, :change, :before, :after, :unit_price, 'product_edit', NULL)"
                     );
                     $logStmt->execute([
-                        ':pid'    => $product_id,
-                        ':pname'  => $product_name,
-                        ':move'   => $move_type,
-                        ':change' => $qty_change,
-                        ':price'  => $retail_price,
-                        ':before' => $old_qty,
-                        ':after'  => $stock_after,
+                        ':pid'        => $product_id,
+                        ':user_id'    => $user_id,
+                        ':pname'      => $product_name,
+                        ':change'     => $qty_diff,
+                        ':before'     => $old_qty,
+                        ':after'      => $quantity,
+                        ':unit_price' => $retail_price,
                     ]);
-                } catch (PDOException $logEx) {
-                    error_log("Restock edit log error: " . $logEx->getMessage());
+                    } catch (PDOException $logEx) {
+                        error_log("Restock edit log error: " . $logEx->getMessage());
+                    }
                 }
 
                 $pdo->commit();
@@ -319,86 +317,83 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     // ── DELETE PRODUCT ────────────────────────────────────────
     } elseif ($action === 'delete') {
-    $product_id = (int) ($_POST['product_id'] ?? 0);
-    if ($product_id > 0) {
-        try {
-            $pdo = getPDO();
+        $product_id = (int) ($_POST['product_id'] ?? 0);
+        if ($product_id > 0) {
+            try {
+                $pdo = getPDO();
 
-            $snapStmt = $pdo->prepare(
-                "SELECT quantity, product_name, expiration_date, status
-                 FROM Product WHERE product_id = :id AND user_id = :uid"
-            );
-            $snapStmt->execute([':id' => $product_id, ':uid' => $user_id]);
-            $snap = $snapStmt->fetch();
-
-            if ($snap) {
-                $is_expired = (!empty($snap['expiration_date']) && $snap['expiration_date'] < date('Y-m-d'))
-                               || $snap['status'] === 'Expired';
-                $snap_qty  = (int)$snap['quantity'];
-                $snap_name = $snap['product_name'];
-
-                $pdo->beginTransaction();
-                $del = $pdo->prepare(
-                    "DELETE FROM Product WHERE product_id = :id AND user_id = :uid"
+                $snapStmt = $pdo->prepare(
+                    "SELECT quantity, product_name, expiration_date, status
+                     FROM Product WHERE product_id = :id AND user_id = :uid"
                 );
-                $del->execute([':id' => $product_id, ':uid' => $user_id]);
+                $snapStmt->execute([':id' => $product_id, ':uid' => $user_id]);
+                $snap = $snapStmt->fetch();
 
-                if ($del->rowCount() === 0) {
-                    $pdo->rollBack();
-                    $error = 'Product not found or access denied.';
-                } else {
-                    $pdo->commit();
+                if ($snap) {
+                    $is_expired = (!empty($snap['expiration_date']) && $snap['expiration_date'] < date('Y-m-d'))
+                                   || $snap['status'] === 'Expired';
+                    $snap_qty  = (int)$snap['quantity'];
+                    $snap_name = $snap['product_name'];
 
-                    // Log AFTER delete — product_id SET NULL on FK so use NULL
-                    try {
-                        $pdo2 = getPDO();
-                        if ($is_expired && $snap_qty > 0) {
-                            $logStmt = $pdo2->prepare(
+                    $pdo->beginTransaction();
+                    $del = $pdo->prepare(
+                        "DELETE FROM Product WHERE product_id = :id AND user_id = :uid"
+                    );
+                    $del->execute([':id' => $product_id, ':uid' => $user_id]);
+
+                    if ($del->rowCount() === 0) {
+                        $pdo->rollBack();
+                        $error = 'Product not found or access denied.';
+                    } else {
+                        $pdo->commit();
+
+                        // ── Post-delete logging ──────────────────────────
+                        // Expired products: the BEFORE DELETE trigger already
+                        // wrote to Expired_Loss_Log AND Inventory_Log — do NOT
+                        // log again here.
+                        //
+                        // Non-expired manual deletions: log with
+                        // transaction_type = 'product_deletion'.
+                        if (!$is_expired && $snap_qty > 0) {
+                            try {
+                                $pdo2    = getPDO();
+                                $logStmt = $pdo2->prepare(
                                 "INSERT INTO Inventory_Log
-                            (product_id, user_id_snap, product_name_snap, movement_type, quantity_change,
-                             selling_price, stock_before, stock_after, reference_type, adjustment_reason)
-                         VALUES (NULL, :uid, :pname, 'out', :qty, :price, :before, 0, 'expired_deletion', 'Expired Items')"
+                                    (product_id, user_id_snap, product_name_snap, quantity_change,
+                                    stock_before, stock_after, unit_price, transaction_type, transaction_id)
+                                VALUES
+                                    (NULL, :user_id, :pname, :qty, :before, 0, NULL, 'product_deletion', NULL)"
                             );
                             $logStmt->execute([
-                                ':pname'  => $snap_name,
-                                ':qty'    => $snap_qty,
-                                ':before' => $snap_qty,
-                                ':uid'    => $user_id,
+                                ':user_id' => $user_id,
+                                ':pname'   => $snap_name,
+                                ':qty'     => -$snap_qty,
+                                ':before'  => $snap_qty,
                             ]);
-                        } elseif (!$is_expired && $snap_qty > 0) {
-                            $logStmt = $pdo2->prepare(
-                                "INSERT INTO Inventory_Log
-                            (product_id, user_id_snap, product_name_snap, movement_type, quantity_change,
-                             stock_before, stock_after, reference_type, adjustment_reason)
-                         VALUES (NULL, :uid, :pname, 'out', :qty, :before, 0, 'manual', 'Other')"
-                            );
-                            $logStmt->execute([
-                                ':pname'  => $snap_name,
-                                ':qty'    => $snap_qty,
-                                ':before' => $snap_qty,
-                                ':uid'    => $user_id,
-                            ]);
+                            } catch (PDOException $logEx) {
+                                error_log("Restock delete log error: " . $logEx->getMessage());
+                            }
                         }
-                    } catch (PDOException $logEx) {
-                        error_log("Restock delete log error: " . $logEx->getMessage());
-                    }
 
-                    $message = 'Product deleted successfully.';
+                        $message = 'Product deleted successfully.';
+                    }
+                } else {
+                    $error = 'Product not found.';
                 }
-            } else {
-                $error = 'Product not found.';
+            } catch (PDOException $e) {
+                if (isset($pdo) && $pdo->inTransaction()) $pdo->rollBack();
+                error_log("Restock delete error: " . $e->getMessage());
+                $error = 'Database error: ' . $e->getMessage();
             }
-        } catch (PDOException $e) {
-            if (isset($pdo) && $pdo->inTransaction()) $pdo->rollBack();
-            error_log("Restock delete error: " . $e->getMessage());
-            $error = 'Database error: ' . $e->getMessage();
         }
+
+    // ── IMPORT CSV ────────────────────────────────────────────
     } elseif ($action === 'import_csv') {
         if (!isset($_FILES['csv_file']) || $_FILES['csv_file']['error'] !== UPLOAD_ERR_OK) {
             $error = 'Please select a valid CSV file to import.';
         } else {
-            $tmpName = $_FILES['csv_file']['tmp_name'] ?? '';
-            $fileName = $_FILES['csv_file']['name'] ?? '';
+            $tmpName   = $_FILES['csv_file']['tmp_name'] ?? '';
+            $fileName  = $_FILES['csv_file']['name']     ?? '';
             $extension = strtolower(pathinfo($fileName, PATHINFO_EXTENSION));
 
             if ($extension !== 'csv' || !is_uploaded_file($tmpName)) {
@@ -406,8 +401,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             } else {
                 $expectedHeaders = ['product_name', 'cost_price', 'retail_price', 'quantity', 'expiration_date'];
                 $inserted = 0;
-                $updated = 0;
-                $skipped = 0;
+                $updated  = 0;
+                $skipped  = 0;
 
                 try {
                     $handle = fopen($tmpName, 'rb');
@@ -446,11 +441,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             continue;
                         }
 
-                        $productName = $row[0];
-                        $costPriceValue = $row[1];
+                        $productName      = $row[0];
+                        $costPriceValue   = $row[1];
                         $retailPriceValue = $row[2];
-                        $quantityValue = $row[3];
-                        $expiryValue = $row[4];
+                        $quantityValue    = $row[3];
+                        $expiryValue      = $row[4];
 
                         if ($productName === '') {
                             fclose($handle);
@@ -470,9 +465,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             throw new InvalidArgumentException('Row ' . ($skipped + $updated + $inserted + 2) . ' has an invalid quantity value.');
                         }
 
-                        $costPrice = (float) $costPriceValue;
+                        $costPrice   = (float) $costPriceValue;
                         $retailPrice = (float) $retailPriceValue;
-                        $quantity = (int) $quantityValue;
+                        $quantity    = (int)   $quantityValue;
 
                         if ($costPrice < 0 || $retailPrice < 0) {
                             fclose($handle);
@@ -487,56 +482,60 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         }
 
                         $expiryDate = parseExpiryDate($expiryValue);
-                        $status = computeInventoryStatus($quantity, $expiryDate);
 
                         $existingStmt = $pdo->prepare(
-                            "SELECT product_id, category_id FROM Product WHERE user_id = :user_id AND LOWER(product_name) = LOWER(:product_name) LIMIT 1"
+                            "SELECT product_id FROM Product
+                             WHERE user_id = :user_id AND LOWER(product_name) = LOWER(:product_name)
+                             LIMIT 1"
                         );
                         $existingStmt->execute([
-                            ':user_id' => $user_id,
+                            ':user_id'      => $user_id,
                             ':product_name' => $productName,
                         ]);
                         $existing = $existingStmt->fetch();
 
                         if ($existing) {
+                            // ── UPDATE existing product ──────────────────
+                            // status is recomputed by trg_product_status_update
                             $updateStmt = $pdo->prepare(
                                 "UPDATE Product
-                                 SET product_name = :product_name,
-                                     quantity = :quantity,
-                                     cost_price = :cost_price,
-                                     retail_price = :retail_price,
-                                     expiration_date = :expiration_date,
-                                     status = :status
+                                 SET product_name    = :product_name,
+                                     quantity        = :quantity,
+                                     cost_price      = :cost_price,
+                                     retail_price    = :retail_price,
+                                     expiration_date = :expiration_date
                                  WHERE product_id = :product_id AND user_id = :user_id"
                             );
                             $updateStmt->execute([
-                                ':product_name' => $productName,
-                                ':quantity' => $quantity,
-                                ':cost_price' => $costPrice,
-                                ':retail_price' => $retailPrice,
+                                ':product_name'    => $productName,
+                                ':quantity'        => $quantity,
+                                ':cost_price'      => $costPrice,
+                                ':retail_price'    => $retailPrice,
                                 ':expiration_date' => $expiryDate,
-                                ':status' => $status,
-                                ':product_id' => (int) $existing['product_id'],
-                                ':user_id' => $user_id,
+                                ':product_id'      => (int) $existing['product_id'],
+                                ':user_id'         => $user_id,
                             ]);
                             $updated++;
                         } else {
+                            // ── INSERT new product ───────────────────────
+                            // SKU is auto-generated and status is auto-set by
+                            // trg_product_before_insert — do NOT pass them here.
                             $insertStmt = $pdo->prepare(
                                 "INSERT INTO Product
-                                    (user_id, category_id, product_name, sku, quantity, cost_price, retail_price, expiration_date, status)
+                                    (user_id, category_id, product_name,
+                                     quantity, cost_price, retail_price, expiration_date)
                                  VALUES
-                                    (:user_id, :category_id, :product_name, :sku, :quantity, :cost_price, :retail_price, :expiration_date, :status)"
+                                    (:user_id, :category_id, :product_name,
+                                     :quantity, :cost_price, :retail_price, :expiration_date)"
                             );
                             $insertStmt->execute([
-                                ':user_id' => $user_id,
-                                ':category_id' => $defaultCategoryId,
-                                ':product_name' => $productName,
-                                ':sku' => 'PENDING',
-                                ':quantity' => $quantity,
-                                ':cost_price' => $costPrice,
-                                ':retail_price' => $retailPrice,
+                                ':user_id'         => $user_id,
+                                ':category_id'     => $defaultCategoryId,
+                                ':product_name'    => $productName,
+                                ':quantity'        => $quantity,
+                                ':cost_price'      => $costPrice,
+                                ':retail_price'    => $retailPrice,
                                 ':expiration_date' => $expiryDate,
-                                ':status' => $status,
                             ]);
                             $inserted++;
                         }
@@ -544,30 +543,23 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
                     fclose($handle);
                     $pdo->commit();
-                    $message = 'CSV import complete. Imported: ' . $inserted . ' new products, ' . $updated . ' updated products. Skipped: ' . $skipped . ' empty row' . ($skipped === 1 ? '' : 's') . '.';
+                    $message = 'CSV import complete. Imported: ' . $inserted . ' new products, '
+                             . $updated . ' updated products. Skipped: ' . $skipped
+                             . ' empty row' . ($skipped === 1 ? '' : 's') . '.';
+
                 } catch (InvalidArgumentException | RuntimeException $e) {
-                    if (isset($pdo) && $pdo->inTransaction()) {
-                        $pdo->rollBack();
-                    }
-                    if (isset($handle) && is_resource($handle)) {
-                        fclose($handle);
-                    }
+                    if (isset($pdo) && $pdo->inTransaction()) $pdo->rollBack();
+                    if (isset($handle) && is_resource($handle)) fclose($handle);
                     $error = $e->getMessage();
                 } catch (PDOException $e) {
-                    if (isset($pdo) && $pdo->inTransaction()) {
-                        $pdo->rollBack();
-                    }
-                    if (isset($handle) && is_resource($handle)) {
-                        fclose($handle);
-                    }
+                    if (isset($pdo) && $pdo->inTransaction()) $pdo->rollBack();
+                    if (isset($handle) && is_resource($handle)) fclose($handle);
                     error_log('CSV import error: ' . $e->getMessage());
                     $error = 'A database error occurred while importing your CSV.';
                 }
             }
         }
     }
-  }
-
 }
 
 // ── Fetch product list for display ──────────────────────────
@@ -644,7 +636,6 @@ try {
     $countStmt->execute([':user_id' => $user_id]);
     $counts = $countStmt->fetch();
 
-    // Fetch categories for edit dropdown
     $catListStmt = $pdo->prepare(
         "SELECT DISTINCT c.category_name FROM Category c
          LEFT JOIN Product p ON p.category_id = c.category_id AND p.user_id = :user_id
@@ -684,14 +675,14 @@ $importActionRequested = ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['acti
 $csvImportNotice = null;
 if ($importActionRequested && is_string($message) && str_contains($message, 'CSV import complete')) {
     $csvImportNotice = [
-        'type' => 'success',
-        'title' => 'Import Successful',
+        'type'    => 'success',
+        'title'   => 'Import Successful',
         'message' => $message,
     ];
 } elseif ($importActionRequested && is_string($error) && $error !== '') {
     $csvImportNotice = [
-        'type' => 'error',
-        'title' => 'Import Failed',
+        'type'    => 'error',
+        'title'   => 'Import Failed',
         'message' => $error,
     ];
 }
@@ -705,6 +696,7 @@ function pageUrl(int $page, string $tab, string $search): string {
 
 $activePage = 'restock';
 ?>
+
 <!DOCTYPE html>
 <html lang="en">
 <head>

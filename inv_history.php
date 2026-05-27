@@ -1,5 +1,5 @@
 <?php
-
+//  inv_history.php 
 session_start();
 if (!isset($_SESSION['user_id'])) {
     header("Location: index.php");
@@ -25,20 +25,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
             // For logs with product_id (active products) — scope by user via Product
             // For logs with NULL product_id (deleted products) — scope by user_id_snap
             $del = $pdo->prepare(
-                "DELETE FROM Inventory_Log
-                 WHERE log_id = :log_id
-                   AND (
-                       product_id IN (
-                           SELECT product_id FROM Product WHERE user_id = :user_id
-                       )
-                       OR (product_id IS NULL AND user_id_snap = :user_id2)
-                   )"
-            );
-            $del->execute([
-                ':log_id'    => $log_id,
-                ':user_id'   => $user_id,
-                ':user_id2'  => $user_id,
-            ]);
+            "DELETE FROM Inventory_Log
+            WHERE log_id = :log_id
+              AND (
+                  user_id_snap = :user_id
+                  OR product_id IN (
+                      SELECT product_id FROM Product WHERE user_id = :user_id2
+                  )
+              )"
+        );
+        $del->execute([
+            ':log_id'   => $log_id,
+            ':user_id'  => $user_id,
+            ':user_id2' => $user_id,
+        ]);
 
             if ($del->rowCount() > 0) {
                 $success_msg = 'Log entry deleted successfully.';
@@ -96,15 +96,13 @@ try {
             product_name,
             sku,
             category_name,
-            movement_type,
             quantity_change,
             selling_price,
             total_price,
             stock_before,
             stock_after,
-            reference_type,
-            reference_id,
-            adjustment_reason
+            transaction_type,
+            transaction_id
          FROM vw_inventory_movements
          WHERE user_id = :user_id
          ORDER BY log_date DESC
@@ -122,23 +120,15 @@ try {
 }
 
 // ── Helper: map reference_type to display label ───────────
-function transactionLabel(string $ref_type, string $movement, string $reason = ''): string {
-    return match($ref_type) {
-        'restock'           => 'Product Restock',
-        'sale'              => 'Sold',
-        'expired_deletion'  => 'Deleted Expired Items',
-        'product_addition'  => 'Product Addition',
-        'product_edit'      => 'Product Edit',
-        'manual'            => match($reason) {
-            'Other'                  => 'Product Deletion',
-            'Expired Items'          => 'Deleted Expired Items',
-            'Stock Count Correction' => 'Stock Correction',
-            'Damaged Goods'          => 'Damaged Goods',
-            'Theft/Loss'             => 'Theft / Loss',
-            'Returned to Supplier'   => 'Returned to Supplier',
-            default                  => 'Manual Adjustment',
-        },
-        default => ucfirst($ref_type),
+function transactionLabel(string $transaction_type): string {
+    return match($transaction_type) {
+        'restock'          => 'Product Restock',
+        'sold'             => 'Sold',
+        'deleted_expired'  => 'Deleted Expired Items',
+        'product_addition' => 'Product Addition',
+        'product_edit'     => 'Product Edit',
+        'product_deletion' => 'Product Deletion',
+        default            => ucfirst(str_replace('_', ' ', $transaction_type)),
     };
 }
 
@@ -237,7 +227,7 @@ $activePage = 'inv_history';
                   <?php foreach ($logs as $row): ?>
                     <?php
                       $display_id   = displayId((int)$row['log_id'], $row['log_date']);
-                      $tx_label = transactionLabel($row['reference_type'], $row['movement_type'], $row['adjustment_reason'] ?? '');
+                     $tx_label = transactionLabel($row['transaction_type']);
                       $date_display = date('m/d/Y - g:ia', strtotime($row['log_date']));
                       $item_name    = htmlspecialchars($row['product_name']);
                     ?>

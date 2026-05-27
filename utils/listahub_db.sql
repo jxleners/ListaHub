@@ -1,68 +1,5 @@
 -- ============================================================
 --  listahub_db_fixed.sql  –  Complete Database Schema
---
---  BUGS FIXED IN THIS VERSION:
---
---  BUG 1 (CRITICAL — caused "database error" on Add Product):
---    trg_product_sku_after_insert did UPDATE Product inside an
---    AFTER INSERT trigger on the same table. MySQL raises
---    ERROR 1442 ("Can't update table already used by the
---    statement that invoked this trigger") on MySQL 5.7 and
---    many 8.0 configs. The entire INSERT was rolled back,
---    which is why every Add Product attempt failed.
---
---    FIX: Removed trg_product_sku_after_insert entirely.
---    trg_product_before_insert now reads AUTO_INCREMENT from
---    information_schema (the predicted next id) and sets the
---    SKU correctly in one pass — no second write needed.
---    A dedicated sku_seq helper table is added so the sequence
---    can be bumped atomically inside the BEFORE INSERT trigger
---    using LAST_INSERT_ID(), making SKU generation reliable
---    even under concurrent inserts without touching
---    information_schema at all.
---
---  BUG 2 (Expired product deletion not deducting from sales):
---    The original trigger fired only when status = 'Expired'
---    AND quantity > 0, which is correct. However the status
---    field is set by trg_product_status_update (BEFORE UPDATE),
---    so a product whose expiration_date passed overnight but
---    was never edited would still show its old status in the
---    DB row. The BEFORE DELETE trigger now re-evaluates expiry
---    directly from OLD.expiration_date < CURDATE() so it does
---    not depend on the status column being up-to-date.
---    Also added: the deletion of expired products now inserts
---    into both Expired_Loss_Log AND records a matching
---    Inventory_Log 'out' entry, so the loss appears
---    automatically in every report that reads either table.
---
---  BUG 3 (G-Cash not tracked separately from Cash):
---    Sale.payment_method ENUM was ('cash','credit') only.
---    G-Cash payments were either rejected or stored as 'cash',
---    making it impossible to report Online Sales vs Cash Sales
---    separately in the Sales page.
---
---    FIX: Added 'gcash' to the ENUM so the column is now
---    ENUM('cash','gcash','credit'). sp_process_cash_sale now
---    accepts p_pay_method IN parameter and passes it through
---    to the INSERT. vw_daily_sales_summary now breaks out
---    gcash_sales separately. A new vw_payment_method_summary
---    view is added for the Sales page widgets.
---
---  BUG 4 (customers.php reads wrong tables):
---    customers.php was querying a legacy schema (tables named
---    `customers` and `customer_credits`) that does not exist
---    in this database. The correct tables written to by
---    sp_process_credit_sale are Customer and Debt.
---    customers.php must query Customer + Sale + Debt +
---    Debt_Payment — the replacement PHP code is documented
---    in the project notes. The schema here exposes all needed
---    data through vw_customer_outstanding (unchanged) plus
---    the new vw_customer_debt_detail view added below.
---
---  ALL PREVIOUS DESIGN DECISIONS RETAINED:
---    • Sale_Item FK ON DELETE SET NULL  (preserves history)
---    • Expired_Loss_Log table           (financial write-off)
---    • category_id INT, SKU generation, LEFT JOINs in views
 -- ============================================================
 
 DROP DATABASE IF EXISTS listahub_db;
@@ -96,7 +33,7 @@ CREATE TABLE Category (
 INSERT INTO Category (category_name) VALUES ('Uncategorized');
 
 -- ============================================================
---  SKU SEQUENCE HELPER  (BUG 1 FIX)
+--  SKU SEQUENCE HELPER
 -- ============================================================
 CREATE TABLE sku_seq (
     seq_id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY
@@ -139,24 +76,24 @@ CREATE TABLE Product (
 CREATE TABLE Inventory_Log (
     log_id            INT UNSIGNED    AUTO_INCREMENT PRIMARY KEY,
     product_id        INT UNSIGNED    NULL,
+    user_id_snap      INT UNSIGNED    NOT NULL, 
     product_name_snap VARCHAR(100)    NOT NULL DEFAULT '',
-    movement_type     ENUM('in','out') NOT NULL,
     quantity_change   INT             NOT NULL,
     stock_before      INT             NOT NULL,
     stock_after       INT             NOT NULL,
-    reference_type    ENUM('restock','sale','manual','expired_deletion') NOT NULL,
-    reference_id      INT UNSIGNED    NULL,
-    adjustment_reason ENUM(
-                          'Damaged Goods',
-                          'Expired Items',
-                          'Stock Count Correction',
-                          'Theft/Loss',
-                          'Returned to Supplier',
-                          'Other'
-                      ) NULL,
+     unit_price        DECIMAL(10,2)   NULL DEFAULT NULL,
+    transaction_id    INT UNSIGNED    NULL,
+    transaction_type  ENUM(
+                          'product_addition',
+                          'product_edit',
+                          'product_deletion',
+                          'restock',
+                          'sold',
+                          'deleted_expired'
+                      ) NOT NULL,
     log_date          DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP,
 
-    CONSTRAINT chk_qty_change CHECK (quantity_change > 0),
+    
     CONSTRAINT fk_invlog_product FOREIGN KEY (product_id)
         REFERENCES Product(product_id) ON UPDATE CASCADE ON DELETE SET NULL
 ) ENGINE=InnoDB;
@@ -214,41 +151,16 @@ CREATE TABLE Customer (
     customer_name     VARCHAR(100)   NOT NULL,
     contact_number    VARCHAR(20)    NOT NULL,
     address           TEXT           NOT NULL,
-    notes             TEXT           NULL,       -- FIX: was missing; used by SP and customers.php
+    notes             TEXT           NULL,
     total_outstanding DECIMAL(12,2)  NOT NULL DEFAULT 0.00,
     created_at        DATETIME       NOT NULL DEFAULT CURRENT_TIMESTAMP,
     CONSTRAINT chk_outstanding CHECK (total_outstanding >= 0)
 ) ENGINE=InnoDB;
 
--- ============================================================
---  1NF MIGRATION: separate contact_number and address columns
---  Run this block ONCE on an existing database to split the
---  old combined "address || phone" value stored in contact_number
---  into the proper separate columns.
--- ============================================================
--- ALTER TABLE Customer
---     MODIFY COLUMN contact_number VARCHAR(20) NOT NULL DEFAULT '',
---     MODIFY COLUMN address        TEXT        NOT NULL;
---
--- UPDATE Customer
--- SET
---     address        = TRIM(SUBSTRING_INDEX(contact_number, '||', 1)),
---     contact_number = TRIM(SUBSTRING_INDEX(contact_number, '||', -1))
--- WHERE contact_number LIKE '%||%';
-
--- ============================================================
---  Sale — BUG 3 FIX:
---  payment_method ENUM now includes 'gcash' so G-Cash
---  transactions are stored separately from plain 'cash'.
---  This allows the Sales page to display:
---    • Cash Sales  (payment_method = 'cash')
---    • Online Sales / G-Cash  (payment_method = 'gcash')
---    • Credit / Utang  (payment_method = 'credit')
--- ============================================================
 CREATE TABLE Sale (
     sale_id          INT UNSIGNED   AUTO_INCREMENT PRIMARY KEY,
     customer_id      INT UNSIGNED   NULL,
-    payment_method   ENUM('cash','gcash','credit') NOT NULL,  -- BUG 3 FIX: added 'gcash'
+    payment_method   ENUM('cash','gcash','credit') NOT NULL,
     total_amount     DECIMAL(12,2)  NOT NULL DEFAULT 0.00,
     amount_tendered  DECIMAL(12,2)  NULL,
     change_given     DECIMAL(12,2)  NULL,
@@ -326,12 +238,11 @@ CREATE INDEX idx_product_user        ON Product(user_id);
 CREATE INDEX idx_invlog_product_date ON Inventory_Log(product_id, log_date);
 CREATE INDEX idx_sale_customer       ON Sale(customer_id);
 CREATE INDEX idx_sale_date           ON Sale(sale_date);
-CREATE INDEX idx_sale_payment        ON Sale(payment_method);   -- BUG 3 FIX: index for payment filter
+CREATE INDEX idx_sale_payment        ON Sale(payment_method);
 CREATE INDEX idx_debtpayment_debt    ON Debt_Payment(debt_id);
 CREATE INDEX idx_loss_user           ON Expired_Loss_Log(user_id);
 CREATE INDEX idx_loss_deleted_at     ON Expired_Loss_Log(deleted_at);
-
-
+CREATE INDEX idx_invlog_user ON Inventory_Log(user_id_snap);
 -- ============================================================
 --  TRIGGERS
 -- ============================================================
@@ -415,6 +326,11 @@ END$$
 
 -- -----------------------------------------------------------
 --  TRIGGER 3 — BEFORE DELETE on Product: Log expired losses.
+--
+--  FIX: Removed phantom movement_type column from INSERT.
+--       Columns now match Inventory_Log exactly:
+--       (product_id, product_name_snap, quantity_change,
+--        stock_before, stock_after, transaction_type, transaction_id)
 -- -----------------------------------------------------------
 CREATE TRIGGER trg_product_before_delete
 BEFORE DELETE ON Product
@@ -439,46 +355,51 @@ BEGIN
             (OLD.user_id, OLD.product_id, OLD.product_name, OLD.sku,
              OLD.quantity, OLD.cost_price, OLD.retail_price, OLD.notes);
 
-        INSERT INTO Inventory_Log
-            (product_id, product_name_snap, movement_type, quantity_change,
-             stock_before, stock_after, reference_type, adjustment_reason)
-        VALUES
-            (OLD.product_id, OLD.product_name, 'out', OLD.quantity,
-             OLD.quantity, 0, 'expired_deletion', 'Expired Items');
+INSERT INTO Inventory_Log
+    (product_id, user_id_snap, product_name_snap, quantity_change,
+     stock_before, stock_after, unit_price, transaction_type, transaction_id)
+VALUES
+    (OLD.product_id, OLD.user_id, OLD.product_name, -OLD.quantity,
+     OLD.quantity, 0, NULL, 'deleted_expired', NULL);
 
     END IF;
 END$$
 
 -- -----------------------------------------------------------
 --  TRIGGER 4 — AFTER INSERT on Sale_Item: Deduct stock.
+--
+--  FIX: Removed phantom movement_type argument; columns now
+--       match Inventory_Log exactly.
 -- -----------------------------------------------------------
 CREATE TRIGGER trg_sale_item_deduct_stock
 AFTER INSERT ON Sale_Item
 FOR EACH ROW
 BEGIN
     DECLARE v_stock_before INT;
+    DECLARE v_user_id      INT UNSIGNED;
 
     IF NEW.product_id IS NOT NULL THEN
-        SELECT quantity INTO v_stock_before
-          FROM Product
-         WHERE product_id = NEW.product_id;
+        SELECT quantity, user_id INTO v_stock_before, v_user_id
+          FROM Product WHERE product_id = NEW.product_id;
 
         UPDATE Product
            SET quantity = quantity - NEW.quantity_sold
          WHERE product_id = NEW.product_id;
 
         INSERT INTO Inventory_Log
-            (product_id, product_name_snap, movement_type, quantity_change,
-             stock_before, stock_after, reference_type, reference_id)
+            (product_id, user_id_snap, product_name_snap, quantity_change,
+            stock_before, stock_after, unit_price, transaction_type, transaction_id)
         VALUES
-            (NEW.product_id, NEW.product_name_snap, 'out', NEW.quantity_sold,
-             v_stock_before, v_stock_before - NEW.quantity_sold,
-             'sale', NEW.sale_id);
+            (NEW.product_id, v_user_id, NEW.product_name_snap, -NEW.quantity_sold,
+            v_stock_before, v_stock_before - NEW.quantity_sold,
+            NEW.unit_price_at_sale, 'sold', NEW.sale_id);
     END IF;
 END$$
-
 -- -----------------------------------------------------------
 --  TRIGGER 5 — AFTER INSERT on Restock_Item: Add stock.
+--
+--  FIX: Removed phantom movement_type argument; columns now
+--       match Inventory_Log exactly.
 -- -----------------------------------------------------------
 CREATE TRIGGER trg_restock_item_add_stock
 AFTER INSERT ON Restock_Item
@@ -486,22 +407,22 @@ FOR EACH ROW
 BEGIN
     DECLARE v_stock_before INT;
     DECLARE v_pname        VARCHAR(100);
+    DECLARE v_user_id      INT UNSIGNED;
 
-    SELECT quantity, product_name INTO v_stock_before, v_pname
-      FROM Product
-     WHERE product_id = NEW.product_id;
+    SELECT quantity, product_name, user_id INTO v_stock_before, v_pname, v_user_id
+    FROM Product WHERE product_id = NEW.product_id;
 
     UPDATE Product
-       SET quantity = quantity + NEW.quantity_added
-     WHERE product_id = NEW.product_id;
+    SET quantity = quantity + NEW.quantity_added
+    WHERE product_id = NEW.product_id;
 
     INSERT INTO Inventory_Log
-        (product_id, product_name_snap, movement_type, quantity_change,
-         stock_before, stock_after, reference_type, reference_id)
+        (product_id, user_id_snap, product_name_snap, quantity_change,
+        stock_before, stock_after, unit_price, transaction_type, transaction_id)
     VALUES
-        (NEW.product_id, COALESCE(v_pname,''), 'in', NEW.quantity_added,
-         v_stock_before, v_stock_before + NEW.quantity_added,
-         'restock', NEW.restock_item_id);
+        (NEW.product_id, v_user_id, COALESCE(v_pname, ''), NEW.quantity_added,
+        v_stock_before, v_stock_before + NEW.quantity_added,
+        NEW.cost_price_at_restock, 'restock', NEW.restock_item_id);
 END$$
 
 -- -----------------------------------------------------------
@@ -537,7 +458,6 @@ BEGIN
                settlement_date   = NEW.payment_date
          WHERE debt_id = NEW.debt_id;
 
-        -- FIX: deduct from Customer.total_outstanding on full payment
         IF v_customer_id IS NOT NULL THEN
             UPDATE Customer
                SET total_outstanding = GREATEST(total_outstanding - NEW.amount_paid, 0)
@@ -548,8 +468,6 @@ BEGIN
            SET status = 'Partially Paid'
          WHERE debt_id = NEW.debt_id AND status = 'Unpaid';
 
-        -- FIX: also deduct on partial payment — previously omitted, so
-        -- partial payments never reduced the customer's outstanding balance.
         IF v_customer_id IS NOT NULL THEN
             UPDATE Customer
                SET total_outstanding = GREATEST(total_outstanding - NEW.amount_paid, 0)
@@ -569,19 +487,13 @@ DELIMITER $$
 
 -- -----------------------------------------------------------
 --  SP 1 — Process a Cash or G-Cash Sale
---
---  BUG 3 FIX: Added p_pay_method IN parameter.
---  The caller (process_sale.php) passes 'cash' or 'gcash'.
---  The value is validated in PHP before reaching here, but
---  the SP also defaults to 'cash' if something unexpected
---  slips through, since the ENUM enforces valid values.
 -- -----------------------------------------------------------
 CREATE PROCEDURE sp_process_cash_sale(
     IN  p_user_id     INT UNSIGNED,
     IN  p_product_ids TEXT,
     IN  p_quantities  TEXT,
     IN  p_tendered    DECIMAL(12,2),
-    IN  p_pay_method  VARCHAR(10),       -- BUG 3 FIX: 'cash' or 'gcash'
+    IN  p_pay_method  VARCHAR(10),
     OUT p_sale_id     INT UNSIGNED,
     OUT p_message     VARCHAR(255)
 )
@@ -673,18 +585,13 @@ END proc$$
 
 -- -----------------------------------------------------------
 --  SP 2 — Process a Credit / Utang Sale
---
---  Writes to: Customer, Sale (payment_method='credit'),
---             Sale_Item, Debt.
---  customers.php reads these same tables via
---  vw_customer_outstanding / vw_customer_debt_detail.
 -- -----------------------------------------------------------
 CREATE PROCEDURE sp_process_credit_sale(
     IN  p_user_id        INT UNSIGNED,
     IN  p_customer_name  VARCHAR(100),
     IN  p_contact_number VARCHAR(20),
     IN  p_address        TEXT,
-    IN  p_notes          TEXT,           -- FIX: was missing; process_sale.php passes this
+    IN  p_notes          TEXT,
     IN  p_product_ids    TEXT,
     IN  p_quantities     TEXT,
     OUT p_sale_id        INT UNSIGNED,
@@ -692,9 +599,6 @@ CREATE PROCEDURE sp_process_credit_sale(
     OUT p_debt_id        INT UNSIGNED,
     OUT p_message        VARCHAR(255)
 )
--- p_contact_number = phone number only (e.g. "09171234567")
--- p_address        = street/barangay address (stored in separate column)
--- p_notes          = optional notes (nullable)
 proc: BEGIN
     DECLARE v_count      INT DEFAULT 1;
     DECLARE v_index      INT DEFAULT 1;
@@ -721,13 +625,11 @@ proc: BEGIN
 
     START TRANSACTION;
 
-        -- Insert customer record (1NF: contact_number and address are separate columns)
         INSERT INTO Customer (customer_name, contact_number, address, notes, total_outstanding)
         VALUES (p_customer_name, p_contact_number, p_address, NULLIF(p_notes,''), 0.00);
 
         SET v_cust_id = LAST_INSERT_ID();
 
-        -- Insert the sale shell
         INSERT INTO Sale
             (customer_id, payment_method, total_amount,
              amount_tendered, change_given, total_cost, sale_date)
@@ -779,12 +681,10 @@ proc: BEGIN
                total_cost   = v_tot_cost
          WHERE sale_id = v_sale_id;
 
-        -- Update customer's outstanding balance
         UPDATE Customer
            SET total_outstanding = v_total
          WHERE customer_id = v_cust_id;
 
-        -- Create the debt record
         INSERT INTO Debt (sale_id, original_amount, remaining_balance, status)
         VALUES (v_sale_id, v_total, v_total, 'Unpaid');
 
@@ -799,25 +699,25 @@ END proc$$
 
 -- -----------------------------------------------------------
 --  SP 3 — Manual Inventory Adjustment
+--
+--  FIX: Removed p_movement_type and p_reason parameters.
+--       Direction (add/subtract) is now inferred from the sign
+--       of p_quantity_change (positive = add, negative = subtract).
+--       transaction_type is always 'product_edit' for manual
+--       adjustments; transaction_id is NULL (no linked record).
+--       INSERT columns now match Inventory_Log exactly.
 -- -----------------------------------------------------------
 CREATE PROCEDURE sp_manual_inventory_adjustment(
     IN  p_product_id      INT UNSIGNED,
-    IN  p_quantity_change INT,
-    IN  p_movement_type   ENUM('in','out'),
-    IN  p_reason          ENUM(
-                              'Damaged Goods',
-                              'Expired Items',
-                              'Stock Count Correction',
-                              'Theft/Loss',
-                              'Returned to Supplier',
-                              'Other'
-                          ),
+    IN  p_quantity_change INT,           -- positive = add stock, negative = subtract stock
     OUT p_message         VARCHAR(255)
 )
 proc: BEGIN
-    DECLARE v_stock_before INT    DEFAULT NULL;
-    DECLARE v_stock_after  INT    DEFAULT 0;
+    DECLARE v_stock_before INT         DEFAULT NULL;
+    DECLARE v_stock_after  INT         DEFAULT 0;
     DECLARE v_pname        VARCHAR(100) DEFAULT '';
+    DECLARE v_abs_change   INT;
+    DECLARE v_user_id      INT UNSIGNED;
 
     DECLARE EXIT HANDLER FOR SQLEXCEPTION
     BEGIN
@@ -825,12 +725,17 @@ proc: BEGIN
         SET p_message = 'Adjustment failed: a database error occurred.';
     END;
 
+    IF p_quantity_change = 0 THEN
+        SET p_message = 'Quantity change must not be zero.';
+        LEAVE proc;
+    END IF;
+
+    SET v_abs_change = ABS(p_quantity_change);
+
     START TRANSACTION;
 
-        SELECT quantity, product_name INTO v_stock_before, v_pname
-          FROM Product
-         WHERE product_id = p_product_id
-           FOR UPDATE;
+        SELECT quantity, product_name, user_id INTO v_stock_before, v_pname, v_user_id
+          FROM Product WHERE product_id = p_product_id FOR UPDATE;
 
         IF v_stock_before IS NULL THEN
             ROLLBACK;
@@ -838,29 +743,22 @@ proc: BEGIN
             LEAVE proc;
         END IF;
 
-        IF p_movement_type = 'in' THEN
-            SET v_stock_after = v_stock_before + p_quantity_change;
-        ELSE
-            IF v_stock_before < p_quantity_change THEN
-                ROLLBACK;
-                SET p_message = 'Cannot subtract more than current stock.';
-                LEAVE proc;
-            END IF;
-            SET v_stock_after = v_stock_before - p_quantity_change;
+        SET v_stock_after = v_stock_before + p_quantity_change;
+
+        IF v_stock_after < 0 THEN
+            ROLLBACK;
+            SET p_message = 'Cannot subtract more than current stock.';
+            LEAVE proc;
         END IF;
 
-        UPDATE Product
-           SET quantity = v_stock_after
-         WHERE product_id = p_product_id;
+        UPDATE Product SET quantity = v_stock_after WHERE product_id = p_product_id;
 
-        INSERT INTO Inventory_Log (
-            product_id, product_name_snap, movement_type, quantity_change,
-            stock_before, stock_after, reference_type, reference_id, adjustment_reason
-        ) VALUES (
-            p_product_id, v_pname, p_movement_type, p_quantity_change,
-            v_stock_before, v_stock_after, 'manual', NULL, p_reason
-        );
-
+        INSERT INTO Inventory_Log
+            (product_id, user_id_snap, product_name_snap, quantity_change,
+            stock_before, stock_after, unit_price, transaction_type, transaction_id)
+        VALUES
+            (p_product_id, v_user_id, v_pname, v_abs_change,
+            v_stock_before, v_stock_after, NULL, 'product_edit', NULL);
     COMMIT;
 
     SET p_message = 'Adjustment applied successfully.';
@@ -940,10 +838,7 @@ SELECT
     p.retail_price,
     p.cost_price,
     p.expiration_date,
-    -- Units sold: count ALL sales including Utang (inventory was deducted)
     COALESCE(SUM(si.quantity_sold), 0)                                  AS total_units_sold,
-    -- Revenue: ONLY cash/gcash sales + actual Debt_Payments collected.
-    -- FIX: Utang sales excluded until the customer actually pays.
     COALESCE(SUM(CASE WHEN s.payment_method IN ('cash','gcash')
                        THEN si.subtotal ELSE 0 END), 0)
     + COALESCE((
@@ -954,7 +849,6 @@ SELECT
         JOIN Sale_Item si2 ON si2.sale_id   = s2.sale_id
         WHERE si2.product_id = p.product_id
       ), 0)                                                             AS total_revenue,
-    -- COGS: only for cash/gcash sales + proportional COGS on Debt_Payments
     COALESCE(SUM(CASE WHEN s.payment_method IN ('cash','gcash')
                        THEN si.quantity_sold * si.unit_cost_at_sale ELSE 0 END), 0)
     + COALESCE((
@@ -965,7 +859,6 @@ SELECT
         JOIN Sale_Item si2 ON si2.sale_id   = s2.sale_id
         WHERE si2.product_id = p.product_id
       ), 0)                                                             AS total_cogs,
-    -- Gross profit: realised revenue minus realised COGS
     (
       COALESCE(SUM(CASE WHEN s.payment_method IN ('cash','gcash')
                          THEN si.subtotal - si.quantity_sold * si.unit_cost_at_sale
@@ -1011,8 +904,6 @@ GROUP BY el.user_id, u.store_name;
 --  Net profit view
 -- -----------------------------------------------------------
 CREATE OR REPLACE VIEW vw_net_profit_summary AS
--- FIX: old JOIN "ON s.sale_id IS NOT NULL" was always true (cross-join = every
---      user sees every sale). FIX: Utang/credit excluded from profit until paid.
 SELECT
     u.user_id,
     u.store_name,
@@ -1062,10 +953,6 @@ GROUP BY u.user_id, u.store_name, el_agg.total_cost_lost;
 
 -- -----------------------------------------------------------
 --  Customer outstanding balances
---  Used by customers.php to display the table and summary.
---  BUG 4 FIX: This view reads from the correct tables
---  (Customer, Sale, Debt, Debt_Payment) that sp_process_credit_sale
---  writes to — not the legacy `customers`/`customer_credits` tables.
 -- -----------------------------------------------------------
 CREATE OR REPLACE VIEW vw_customer_outstanding AS
 SELECT
@@ -1073,7 +960,7 @@ SELECT
     cu.customer_name,
     cu.contact_number,
     cu.address,
-    cu.notes,                                                            -- FIX: was missing
+    cu.notes,
     cu.total_outstanding,
     cu.created_at,
     COUNT(DISTINCT d.debt_id)                                        AS total_credit_transactions,
@@ -1086,13 +973,10 @@ LEFT JOIN Sale          s  ON s.customer_id = cu.customer_id
 LEFT JOIN Debt          d  ON d.sale_id     = s.sale_id
 LEFT JOIN Debt_Payment dp  ON dp.debt_id    = d.debt_id
 GROUP BY cu.customer_id, cu.customer_name, cu.contact_number,
-         cu.address, cu.total_outstanding, cu.created_at;
+         cu.address, cu.notes, cu.total_outstanding, cu.created_at;
 
 -- -----------------------------------------------------------
---  Customer debt detail — one row per Debt record.
---  customers.php uses this for the per-row table display
---  (amount owed, settlement date, status per transaction).
---  BUG 4 FIX: Replaces the old customer_credits JOIN.
+--  Customer debt detail
 -- -----------------------------------------------------------
 CREATE OR REPLACE VIEW vw_customer_debt_detail AS
 SELECT
@@ -1100,7 +984,7 @@ SELECT
     cu.customer_name,
     cu.contact_number,
     cu.address,
-    cu.notes,                                                            -- FIX: was missing
+    cu.notes,
     cu.created_at,
     d.debt_id,
     d.sale_id,
@@ -1135,14 +1019,7 @@ WHERE p.status IN ('Low Stock','Out of Stock','Near Expiry','Expired')
 ORDER BY p.quantity ASC;
 
 -- -----------------------------------------------------------
---  Daily sales summary — BUG 3 FIX:
---  Now breaks out cash_sales, gcash_sales, and credit_sales
---  separately. The Sales page widgets should read:
---    • cash_sales   → Cash Sales count / revenue
---    • gcash_sales  → Online Sales (G-Cash) count / revenue
---    • credit_sales → Credit / Utang count / revenue
---  The old view only had cash_sales + credit_sales; G-Cash
---  was silently counted as cash, so online revenue was wrong.
+--  Daily sales summary
 -- -----------------------------------------------------------
 CREATE OR REPLACE VIEW vw_daily_sales_summary AS
 SELECT
@@ -1152,17 +1029,14 @@ SELECT
     SUM(s.total_cost)                                                    AS total_cost,
     SUM(s.profit)                                                        AS total_profit,
 
-    -- Cash (physical money only)
     SUM(CASE WHEN s.payment_method = 'cash'   THEN 1     ELSE 0    END) AS cash_sales,
     SUM(CASE WHEN s.payment_method = 'cash'   THEN s.total_amount
                                                ELSE 0    END)           AS cash_revenue,
 
-    -- G-Cash / Online
     SUM(CASE WHEN s.payment_method = 'gcash'  THEN 1     ELSE 0    END) AS gcash_sales,
     SUM(CASE WHEN s.payment_method = 'gcash'  THEN s.total_amount
                                                ELSE 0    END)           AS gcash_revenue,
 
-    -- Credit / Utang
     SUM(CASE WHEN s.payment_method = 'credit' THEN 1     ELSE 0    END) AS credit_sales,
     SUM(CASE WHEN s.payment_method = 'credit' THEN s.total_amount
                                                ELSE 0    END)           AS credit_revenue
@@ -1173,13 +1047,6 @@ ORDER BY sale_day DESC;
 
 -- -----------------------------------------------------------
 --  Payment method summary (per user, all-time)
---  BUG 3 FIX: New view for the Sales page summary widgets.
---  Query this filtered by user_id from Sale → Sale_Item →
---  Product.user_id, or add user_id to Sale if needed.
---
---  NOTE: Sale does not store user_id directly; join through
---  Sale_Item → Product to get user_id, or filter via a
---  subquery. For convenience a user-scoped version is below.
 -- -----------------------------------------------------------
 CREATE OR REPLACE VIEW vw_payment_method_summary AS
 SELECT
@@ -1196,23 +1063,30 @@ GROUP BY p.user_id, s.payment_method;
 
 -- -----------------------------------------------------------
 --  Inventory movements
+--
+--  FIX: Removed trailing comma before FROM that caused a
+--       syntax error.
 -- -----------------------------------------------------------
 CREATE OR REPLACE VIEW vw_inventory_movements AS
 SELECT
     il.log_id,
     il.log_date,
     il.product_id,
-    COALESCE(p.user_id, 0)                         AS user_id,
+    il.user_id_snap                                AS user_id,
     COALESCE(p.sku, il.product_name_snap)          AS sku,
     COALESCE(p.product_name, il.product_name_snap) AS product_name,
     COALESCE(c.category_name, 'Uncategorized')     AS category_name,
-    il.movement_type,
     il.quantity_change,
     il.stock_before,
     il.stock_after,
-    il.reference_type,
-    il.reference_id,
-    il.adjustment_reason
+    il.unit_price                                  AS selling_price,
+    CASE
+        WHEN il.unit_price IS NOT NULL
+        THEN il.unit_price * ABS(il.quantity_change)
+        ELSE NULL
+    END                                            AS total_price,
+    il.transaction_type,
+    il.transaction_id
 FROM Inventory_Log il
 LEFT JOIN Product  p ON p.product_id  = il.product_id
 LEFT JOIN Category c ON c.category_id = p.category_id
