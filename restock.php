@@ -377,7 +377,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             if ($extension !== 'csv' || !is_uploaded_file($tmpName)) {
                 $error = 'Please select a valid CSV file to import.';
             } else {
-                $expectedHeaders = ['product_name', 'cost_price', 'retail_price', 'quantity', 'expiration_date'];
+                $expectedHeaders = ['product_name', 'category_name', 'cost_price', 'retail_price', 'quantity', 'expiration_date'];
                 $inserted = 0;
                 $updated  = 0;
                 $skipped  = 0;
@@ -428,7 +428,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
                     $pdo = getPDO();
                     $pdo->beginTransaction();
-                    $defaultCategoryId = resolveCategoryId($pdo, 'Uncategorized');
 
                     while (($row = fgetcsv($handle, 0, $delimiter)) !== false) {
                         $rowNumber++;
@@ -447,11 +446,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             continue;
                         }
 
-                        $productName     = $row[$headerMap['product_name']] ?? '';
-                        $costPriceValue  = $row[$headerMap['cost_price']] ?? '';
-                        $retailPriceValue= $row[$headerMap['retail_price']] ?? '';
-                        $quantityValue   = $row[$headerMap['quantity']] ?? '';
-                        $expiryValue     = $row[$headerMap['expiration_date']] ?? '';
+                        $productName      = $row[$headerMap['product_name']]    ?? '';
+                        $categoryNameValue= $row[$headerMap['category_name']]   ?? '';
+                        $costPriceValue   = $row[$headerMap['cost_price']]      ?? '';
+                        $retailPriceValue = $row[$headerMap['retail_price']]    ?? '';
+                        $quantityValue    = $row[$headerMap['quantity']]         ?? '';
+                        $expiryValue      = $row[$headerMap['expiration_date']] ?? '';
 
                         if ($productName === '') {
                             fclose($handle);
@@ -487,7 +487,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             throw new InvalidArgumentException('Row ' . $rowNumber . ' has negative stock. Quantity must be 0 or higher.');
                         }
 
-                        $expiryDate = parseExpiryDate($expiryValue);
+                        $expiryDate  = parseExpiryDate($expiryValue);
+                        $categoryId  = resolveCategoryId($pdo, $categoryNameValue);
 
                         $existingStmt = $pdo->prepare(
                             "SELECT product_id FROM Product
@@ -503,15 +504,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         if ($existing) {
                             $updateStmt = $pdo->prepare(
                                 "UPDATE Product
-                                 SET product_name = :product_name,
-                                     quantity = :quantity,
-                                     cost_price = :cost_price,
-                                     retail_price = :retail_price,
+                                 SET product_name    = :product_name,
+                                     category_id     = :category_id,
+                                     quantity        = :quantity,
+                                     cost_price      = :cost_price,
+                                     retail_price    = :retail_price,
                                      expiration_date = :expiration_date
-                                  WHERE product_id = :product_id AND user_id = :user_id"
+                                 WHERE product_id = :product_id AND user_id = :user_id"
                             );
                             $updateStmt->execute([
                                 ':product_name'    => $productName,
+                                ':category_id'     => $categoryId,
                                 ':quantity'        => $quantity,
                                 ':cost_price'      => $costPrice,
                                 ':retail_price'    => $retailPrice,
@@ -529,7 +532,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             );
                             $insertStmt->execute([
                                 ':user_id'         => $user_id,
-                                ':category_id'     => $defaultCategoryId,
+                                ':category_id'     => $categoryId,
                                 ':product_name'    => $productName,
                                 ':quantity'        => $quantity,
                                 ':cost_price'      => $costPrice,
@@ -715,6 +718,192 @@ $activePage = 'restock';
   <link rel="stylesheet" href="css/restock-inline.css"/>
   <link rel="stylesheet" href="css/main-body.css"/>
 
+  <!-- CSV Import Guide modal — new styled elements -->
+  <style>
+  /* ── CSV Import overlay / modal ─────────────────────────────────────────── */
+  #csv-import-overlay {
+    position: fixed;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+    z-index: 1200;
+    background: rgba(48, 35, 21, 0.24);
+    backdrop-filter: blur(14px);
+    -webkit-backdrop-filter: blur(14px);
+    opacity: 0;
+    visibility: hidden;
+    pointer-events: none;
+    transition: opacity 220ms ease, visibility 0s linear 220ms;
+  }
+  #csv-import-overlay.is-open {
+    opacity: 1;
+    visibility: visible;
+    pointer-events: auto;
+    transition: opacity 220ms ease, visibility 0s linear 0s;
+  }
+  #csv-import-modal {
+    box-sizing: border-box;
+    width: min(540px, calc(100vw - 40px));
+    background: linear-gradient(146.01deg, rgb(255,246,236), rgb(254,246,227), rgb(255,244,216)),
+                linear-gradient(rgba(252,248,238,0.2), rgba(252,248,238,0.2));
+    border: 2px solid var(--text-brown, #3e2c23);
+    border-radius: 15px;
+    padding: 20px 22px 18px;
+    box-shadow: 6px 5px 8px rgba(62,44,35,0.09), 1px 1px 4px rgba(62,44,35,0.1);
+    backdrop-filter: blur(20.6px);
+    -webkit-backdrop-filter: blur(20.6px);
+    opacity: 0;
+    transform: translateY(10px) scale(0.98);
+    transition: opacity 220ms cubic-bezier(.22,.61,.36,1), transform 220ms cubic-bezier(.22,.61,.36,1);
+  }
+  #csv-import-overlay.is-open #csv-import-modal {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+
+  /* Header */
+  .cim-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 16px;
+  }
+  .cim-title {
+    margin: 0;
+    font-size: 28px;
+    font-weight: 800;
+    font-family: var(--font-inter, 'Inter', sans-serif);
+    color: var(--text-brown, #3e2c23);
+    letter-spacing: -0.03em;
+  }
+  .cim-close-btn {
+    cursor: pointer;
+    border: 0;
+    padding: 0;
+    background: transparent;
+    height: 34px;
+    width: 34px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 17px;
+    color: var(--text-brown, #3e2c23);
+    transition: background 0.15s;
+    flex-shrink: 0;
+  }
+  .cim-close-btn:hover { background: rgba(62,44,35,0.1); }
+
+  /* Status icon */
+  .csv-import-icon {
+    width: 48px;
+    height: 48px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 50%;
+    font-size: 1.6rem;
+    margin-bottom: 12px;
+    background: rgba(62,44,35,0.08);
+    border: 1.5px solid rgba(62,44,35,0.15);
+    color: var(--text-brown, #3e2c23);
+  }
+  #csv-import-modal[data-variant="error"]   .csv-import-icon { background:#fee2e2; border-color:rgba(235,69,58,.35); color:#dc2626; }
+  #csv-import-modal[data-variant="success"] .csv-import-icon { background:#d1fae5; border-color:rgba(21,148,89,.35);  color:#159459; }
+  #csv-import-modal[data-variant="loading"] .csv-import-icon { background:rgba(62,44,35,0.06); color:var(--text-brown,#3e2c23); }
+
+  /* Body text (status messages) */
+  .csv-import-body {
+    font-size: 0.97rem;
+    color: rgba(62,44,35,0.86);
+    line-height: 1.6;
+    margin-bottom: 18px;
+  }
+
+  /* Guide content */
+  .cim-guide-content {
+    margin-bottom: 18px;
+  }
+  .cim-guide-label {
+    font-size: 0.82rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: rgba(62,44,35,0.55);
+    margin: 0 0 6px;
+  }
+  .cim-code-block {
+    background: rgba(62,44,35,0.07);
+    border: 1.5px solid rgba(62,44,35,0.15);
+    border-radius: 8px;
+    padding: 10px 14px;
+    font-family: 'Courier New', Courier, monospace;
+    font-size: 0.84rem;
+    color: var(--text-brown, #3e2c23);
+    line-height: 1.7;
+    word-break: break-all;
+  }
+  .cim-rules {
+    list-style: none;
+    padding: 0;
+    margin: 14px 0 0;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+  .cim-rules li {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    font-size: 0.88rem;
+    color: rgba(62,44,35,0.82);
+    line-height: 1.4;
+  }
+  .cim-rules li i { flex-shrink: 0; margin-top: 2px; }
+  .cim-rules li .bi-check2    { color: #159459; }
+  .cim-rules li .bi-x         { color: #dc2626; }
+  .cim-rules li .bi-info-circle { color: var(--text-brown, #3e2c23); opacity: 0.6; }
+
+  /* Buttons */
+  .csv-import-buttons {
+    display: flex;
+    justify-content: flex-end;
+    gap: 10px;
+    margin-top: 4px;
+  }
+  .csv-import-btn-secondary {
+    padding: 9px 22px;
+    border-radius: 20px;
+    border: 2px solid rgba(62,44,35,0.3);
+    background: transparent;
+    color: var(--text-brown, #3e2c23);
+    font-size: 0.9rem;
+    font-weight: 600;
+    cursor: pointer;
+    font-family: var(--font-inter, 'Inter', sans-serif);
+    transition: background 0.15s, border-color 0.15s;
+  }
+  .csv-import-btn-secondary:hover { background: rgba(62,44,35,0.07); border-color: rgba(62,44,35,0.5); }
+  .csv-import-btn-primary {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    padding: 9px 22px;
+    border-radius: 20px;
+    border: none;
+    background: var(--text-brown, #3e2c23);
+    color: #fff;
+    font-size: 0.9rem;
+    font-weight: 600;
+    cursor: pointer;
+    font-family: var(--font-inter, 'Inter', sans-serif);
+    transition: opacity 0.15s;
+  }
+  .csv-import-btn-primary:hover { opacity: 0.88; }
+  </style>
+
 </head>
 <body>
 
@@ -808,7 +997,7 @@ $activePage = 'restock';
                class="tab-btn <?= $tab === 'near'    ? 'active' : '' ?>">Near Expiry</a>
           </div>
 
-            <button type="button" class="btn-import" onclick="document.getElementById('csv-upload').click()">
+            <button type="button" class="btn-import" onclick="showCsvImportPrompt()">
               <i class="bi bi-upload"></i> Import CSV
             </button>
         </div>
@@ -1286,6 +1475,26 @@ function handleComplete(e) {
 /* ── CSV Import ──────────────────────────────────────────── */
 var csvImportNotice = <?= $csvImportNoticeJson ?>;
 
+function openCsvImportGuide() {
+  var overlay = document.getElementById('csv-import-overlay');
+  var modal   = document.getElementById('csv-import-modal');
+  if (!overlay || !modal) return;
+
+  modal.dataset.variant = 'info';
+  document.getElementById('csv-import-title').textContent = 'Import CSV';
+  document.getElementById('csv-import-body').textContent  = '';
+  document.getElementById('csv-import-body').style.display = 'none';
+  document.getElementById('csv-import-icon').style.display = 'none';
+  document.getElementById('cim-guide-content').style.display = 'block';
+  document.getElementById('csv-import-primary-btn').style.display  = 'inline-flex';
+  var secBtn = document.getElementById('csv-import-secondary-btn');
+  secBtn.textContent   = 'Cancel';
+  secBtn.style.display = 'inline-flex';
+
+  overlay.classList.add('is-open');
+  document.body.style.overflow = 'hidden';
+}
+
 function openCsvImportNotice(title, body, variant) {
   var overlay = document.getElementById('csv-import-overlay');
   var modal = document.getElementById('csv-import-modal');
@@ -1294,8 +1503,14 @@ function openCsvImportNotice(title, body, variant) {
   var bodyEl = document.getElementById('csv-import-body');
   var primaryBtn = document.getElementById('csv-import-primary-btn');
   var secondaryBtn = document.getElementById('csv-import-secondary-btn');
+  var guideContent = document.getElementById('cim-guide-content');
 
   if (!overlay || !modal || !icon || !titleEl || !bodyEl || !primaryBtn || !secondaryBtn) return;
+
+  // Hide guide, show status
+  guideContent.style.display = 'none';
+  bodyEl.style.display = 'block';
+  icon.style.display   = 'inline-flex';
 
   modal.dataset.variant = variant || 'info';
   icon.innerHTML = variant === 'error'
@@ -1306,9 +1521,9 @@ function openCsvImportNotice(title, body, variant) {
         ? '<i class="bi bi-hourglass-split"></i>'
         : '<i class="bi bi-filetype-csv"></i>';
   titleEl.textContent = title || 'CSV Import';
-  bodyEl.textContent = body || '';
-  primaryBtn.style.display = variant === 'info' ? 'inline-flex' : 'none';
-  secondaryBtn.textContent = variant === 'info' ? 'Cancel' : 'Close';
+  bodyEl.textContent  = body  || '';
+  primaryBtn.style.display   = 'none';
+  secondaryBtn.textContent   = variant === 'loading' ? '' : 'Close';
   secondaryBtn.style.display = variant === 'loading' ? 'none' : 'inline-flex';
   overlay.classList.add('is-open');
   document.body.style.overflow = 'hidden';
@@ -1323,18 +1538,7 @@ function closeCsvImportNotice() {
 }
 
 function showCsvImportPrompt() {
-  var message = [
-    'Before choosing a file, make sure your CSV uses this exact column order:',
-    'product_name,cost_price,retail_price,quantity,expiration_date',
-    '',
-    'Example rows:',
-    'Coke,10,25,50,',
-    'Milk,40,95,20,2026-12-01',
-    '',
-    'CSV files only. Empty rows will be ignored. Quantity cannot be negative. Leave expiration_date empty if the product has no expiry date.'
-  ].join('\n');
-
-  openCsvImportNotice('CSV Import Reminder', message, 'info');
+  openCsvImportGuide();
 }
 
 function chooseCsvFile() {
@@ -1452,15 +1656,49 @@ function closeImgPreview() {
   </div>
 </div>
 
+<!-- ── CSV Import Guide / Status Overlay ── -->
 <div id="csv-import-overlay" onclick="closeCsvImportNotice()">
   <div id="csv-import-modal" onclick="event.stopPropagation()" data-variant="info">
-    <div id="csv-import-icon" class="csv-import-icon"><i class="bi bi-filetype-csv"></i></div>
-    <div id="csv-import-title" class="csv-import-title">CSV Format Guide</div>
+
+    <!-- Header row: title + close -->
+    <div class="cim-header">
+      <h2 class="cim-title" id="csv-import-title">Import CSV</h2>
+      <button type="button" class="cim-close-btn" onclick="closeCsvImportNotice()" aria-label="Close">
+        <i class="bi bi-x-lg"></i>
+      </button>
+    </div>
+
+    <!-- Status icon (shown for success / error / loading states) -->
+    <div id="csv-import-icon" class="csv-import-icon" style="display:none;"><i class="bi bi-filetype-csv"></i></div>
+
+    <!-- Body: guide content or status message -->
     <div id="csv-import-body" class="csv-import-body"></div>
+
+    <!-- Guide content (only shown in info/guide variant) -->
+    <div id="cim-guide-content" class="cim-guide-content">
+      <p class="cim-guide-label">Required column order:</p>
+      <div class="cim-code-block">product_name, category_name, cost_price, retail_price, quantity, expiration_date</div>
+      <p class="cim-guide-label" style="margin-top:14px;">Example rows:</p>
+      <div class="cim-code-block">Coke, Beverages, 10, 25, 50,<br>Milk, Dairy, 40, 95, 20, 2026-12-01<br>Bread, Bakery, 15, 35, 30, NULL</div>
+      <ul class="cim-rules">
+        <li><i class="bi bi-check2"></i> CSV files only (.csv)</li>
+        <li><i class="bi bi-check2"></i> First row must be the header row</li>
+        <li><i class="bi bi-check2"></i> Leave <strong>expiration_date</strong> empty or type <strong>NULL</strong> if no expiry</li>
+        <li><i class="bi bi-check2"></i> Empty rows are ignored automatically</li>
+        <li><i class="bi bi-x"></i> Negative quantities are not allowed</li>
+        <li><i class="bi bi-info-circle"></i> If category doesn't exist, it will be created</li>
+        <li><i class="bi bi-info-circle"></i> SKU and Status are auto-generated</li>
+      </ul>
+    </div>
+
+    <!-- Action buttons -->
     <div class="csv-import-buttons">
       <button id="csv-import-secondary-btn" type="button" class="csv-import-btn-secondary" onclick="closeCsvImportNotice()">Cancel</button>
-      <button id="csv-import-primary-btn" type="button" class="csv-import-btn-primary" onclick="chooseCsvFile()">Choose File</button>
+      <button id="csv-import-primary-btn" type="button" class="csv-import-btn-primary" onclick="chooseCsvFile()">
+        <i class="bi bi-upload"></i> Choose File
+      </button>
     </div>
+
   </div>
 </div>
 

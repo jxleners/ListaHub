@@ -1137,12 +1137,17 @@ $activePage = 'manage-products';
 
   <div class="main-body">
 
-    <?php if ($message): ?>
-      <div class="alert alert-success"><?= htmlspecialchars($message) ?></div>
-    <?php endif; ?>
-    <?php if ($error): ?>
-      <div class="alert alert-error"><?= htmlspecialchars($error) ?></div>
-    <?php endif; ?>
+    <?php
+      // Consolidate all flash messages into one toast
+      if ($message)                                    { $toast_text = $message;         $toast_type = 'success'; }
+      elseif ($error)                                  { $toast_text = $error;           $toast_type = 'error';   }
+      elseif ($add_flash_msg && $add_flash_type === 'success')  { $toast_text = $add_flash_msg;  $toast_type = 'success'; }
+      elseif ($edit_flash_msg && $edit_flash_type === 'success'){ $toast_text = $edit_flash_msg; $toast_type = 'success'; }
+      elseif ($add_flash_msg)                          { $toast_text = $add_flash_msg;  $toast_type = 'error';   }
+      elseif ($edit_flash_msg)                         { $toast_text = $edit_flash_msg; $toast_type = 'error';   }
+      else                                             { $toast_text = '';               $toast_type = '';        }
+    ?>
+    <div class="toast <?= $toast_type ?>" id="toastMsg"><?= htmlspecialchars($toast_text) ?></div>
 
     <!-- ── OVERVIEW ── -->
     <section class="overview">
@@ -2069,6 +2074,17 @@ function closeImgPreview() {
 
 /* Init */
 renderPage();
+
+/* ── Toast auto-hide ─────────────────────────────────────────── */
+(function () {
+  var toast = document.getElementById('toastMsg');
+  if (toast && toast.textContent.trim() !== '') {
+    toast.classList.add('show');
+    setTimeout(function () {
+      toast.classList.remove('show');
+    }, 3500);
+  }
+})();
 </script>
 </body>
 </html>

@@ -634,24 +634,32 @@ table.customers-table tbody td.col-actions {
 }
 .modal-btn.btn-danger:hover {
   background: #c73930;
-} /* Flash messages */
-.flash-msg {
-  padding: 10px 16px;
-  border-radius: var(--br-10);
+} /* Toast notifications */
+.toast {
+  display: none;
+  position: fixed;
+  bottom: 24px;
+  right: 24px;
+  z-index: 2000;
+  background: var(--text-brown);
+  color: #fff;
+  font-family: var(--font-inter);
   font-size: 14px;
-  font-weight: 600;
-  align-self: stretch;
-  box-sizing: border-box;
+  font-weight: 500;
+  padding: 12px 20px;
+  border-radius: var(--br-10);
+  box-shadow: var(--shadow-drop);
+  transition: opacity 0.3s;
+  max-width: 320px;
 }
-.flash-msg.success {
-  background: rgba(21, 148, 89, 0.15);
-  color: var(--green);
-  border: 1px solid var(--green);
+.toast.show {
+  display: block;
 }
-.flash-msg.error {
-  background: rgba(235, 69, 58, 0.12);
-  color: var(--red);
-  border: 1px solid var(--red);
+.toast.success {
+  background: #159459;
+}
+.toast.error {
+  background: var(--red);
 } /* ============================================================
    RESPONSIVE
    ============================================================ */

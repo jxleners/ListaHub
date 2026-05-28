@@ -21,3 +21,6 @@ Stack trace:
   thrown in C:\xampp\htdocs\ListaHub\manage-products.php on line 189
 [27-May-2026 06:33:59 Europe/Berlin] Edit log error: SQLSTATE[23000]: Integrity constraint violation: 4025 CONSTRAINT `chk_qty_change` failed for `listahub_db`.`inventory_log`
 [27-May-2026 06:47:35 Europe/Berlin] Edit log error: SQLSTATE[23000]: Integrity constraint violation: 4025 CONSTRAINT `chk_qty_change` failed for `listahub_db`.`inventory_log`
+[28-May-2026 06:31:50 Europe/Berlin] [ListaHub DB Error] SQLSTATE[HY000] [2002] No connection could be made because the target machine actively refused it
+[28-May-2026 06:32:04 Europe/Berlin] [ListaHub DB Error] SQLSTATE[HY000] [2002] No connection could be made because the target machine actively refused it
+[28-May-2026 06:32:08 Europe/Berlin] [ListaHub DB Error] SQLSTATE[HY000] [2002] No connection could be made because the target machine actively refused it

@@ -699,12 +699,12 @@ $activePage = 'customers';
 
     <main class="main-body">
 
-      <?php if ($message): ?>
-        <div class="flash-msg success"><?= htmlspecialchars($message) ?></div>
-      <?php endif; ?>
-      <?php if ($error): ?>
-        <div class="flash-msg error"><?= htmlspecialchars($error) ?></div>
-      <?php endif; ?>
+      <?php
+        if ($message)      { $toast_text = $message; $toast_type = 'success'; }
+        elseif ($error)    { $toast_text = $error;   $toast_type = 'error';   }
+        else               { $toast_text = '';        $toast_type = '';        }
+      ?>
+      <div class="toast <?= $toast_type ?>" id="toastMsg"><?= htmlspecialchars($toast_text) ?></div>
 
       <!-- ── OVERVIEW HEADER ── -->
       <section class="overview-section">
@@ -1252,14 +1252,16 @@ $activePage = 'customers';
     if (existing) existing.remove();
   });
 
-  /* ── Auto-dismiss flash messages ── */
-  setTimeout(function() {
-    document.querySelectorAll('.flash-msg').forEach(function(m) {
-      m.style.transition = 'opacity .5s';
-      m.style.opacity    = '0';
-      setTimeout(function() { m.remove(); }, 500);
-    });
-  }, 4000);
+  /* ── Toast auto-hide ── */
+  (function () {
+    var toast = document.getElementById('toastMsg');
+    if (toast && toast.textContent.trim() !== '') {
+      toast.classList.add('show');
+      setTimeout(function () {
+        toast.classList.remove('show');
+      }, 3500);
+    }
+  })();
 </script>
 
 </body>

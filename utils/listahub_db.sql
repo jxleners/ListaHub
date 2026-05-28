@@ -20,6 +20,7 @@ CREATE TABLE User (
     email         VARCHAR(100)    NOT NULL UNIQUE,
     password_hash VARCHAR(255)    NOT NULL,
     store_name    VARCHAR(100)    NOT NULL,
+    store_type    VARCHAR(100)    NOT NULL DEFAULT 'Sari-Sari Store',
     created_at    DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP,
     last_login    DATETIME        NULL
 ) ENGINE=InnoDB;

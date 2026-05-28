@@ -46,22 +46,33 @@ body {
   letter-spacing: -0.04em;
   font-family: var(--font-inter);
 } /* ─────────────────────────────────────────
-   Alert Messages
+   Toast Notifications
 ───────────────────────────────────────── */
-.alert {
-  padding: 12px 16px;
-  border-radius: var(--br-10);
-  font-size: var(--fs-13);
-  font-weight: 600;
+.toast {
+  display: none;
+  position: fixed;
+  bottom: 24px;
+  right: 24px;
+  z-index: 2000;
+  background: var(--text-brown);
+  color: #fff;
   font-family: var(--font-inter);
+  font-size: var(--fs-14);
+  font-weight: 500;
+  padding: 12px 20px;
+  border-radius: var(--br-10);
+  box-shadow: var(--shadow-drop);
+  transition: opacity 0.3s;
+  max-width: 320px;
 }
-.alert-success {
-  background: #d1fae5;
-  color: #065f46;
+.toast.show {
+  display: block;
 }
-.alert-error {
-  background: #fee2e2;
-  color: #991b1b;
+.toast.success {
+  background: #159459;
+}
+.toast.error {
+  background: var(--red);
 } /* ─────────────────────────────────────────
    Overview Section: title + stat cards
    (all inside one rounded cream container)

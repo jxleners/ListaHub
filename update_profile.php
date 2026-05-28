@@ -1,8 +1,9 @@
 <?php
 // ============================================================
 //  update_profile.php
-//  Handles username + store_name updates from the sidebar modal.
-//  Called via POST from any page that includes sidebar.php.
+//  Handles username + store_name + store_type updates from
+//  the sidebar modal. Called via POST from any page that
+//  includes sidebar.php.
 // ============================================================
 session_start();
 if (!isset($_SESSION['user_id'])) {
@@ -38,6 +39,18 @@ if (empty($new_username) || empty($new_store_name) || empty($new_store_type)) {
 try {
     $pdo = getPDO();
 
+    // ── Ensure store_type column exists (migration guard) ──
+    try {
+        $pdo->exec(
+            "ALTER TABLE User ADD COLUMN store_type VARCHAR(100) NOT NULL DEFAULT 'Sari-Sari Store'"
+        );
+    } catch (PDOException $altEx) {
+        // Column already exists — ignore duplicate column error (1060)
+        if ($altEx->getCode() !== '42S21' && strpos($altEx->getMessage(), '1060') === false) {
+            throw $altEx; // Re-throw anything unexpected
+        }
+    }
+
     // Check if username is taken by another user
     $check = $pdo->prepare(
         "SELECT user_id FROM User WHERE username = :username AND user_id != :user_id LIMIT 1"
@@ -69,6 +82,6 @@ try {
 
 } catch (PDOException $e) {
     error_log("Profile update error: " . $e->getMessage());
-    header("Location: {$redirect}?profile_error=Database+error+please+try+again");
+    header("Location: {$redirect}?profile_error=" . urlencode('Database error: ' . $e->getMessage()));
     exit;
 }
